@@ -1,57 +1,138 @@
-use async_std_resolver::resolver_from_system_conf;
-use async_std_resolver::AsyncStdResolver;
-use include_flate::flate;
-use std::net::IpAddr;
-use std::net::ToSocketAddrs;
-use std::str::FromStr;
-use tide::http::headers;
-use tide::http::headers::HeaderName;
-use tide::http::mime;
-use tide::Request;
-use tide::Response;
-use {
-    async_std::task::block_on,
-    tera::{Context, Tera},
+#![deny(
+    missing_copy_implementations,
+    //missing_docs,
+    missing_debug_implementations,
+    single_use_lifetimes,
+    unsafe_code,
+    unused_extern_crates,
+    unused_import_braces,
+    unused_lifetimes,
+    unused_qualifications,
+    unused_results,
+    clippy::all,
+    clippy::pedantic,
+    clippy::nursery
+)]
+#![allow(clippy::cast_possible_truncation, clippy::redundant_pub_crate)]
+// Clippy rules in the `Restriction lints`
+#![deny(
+    clippy::clone_on_ref_ptr,
+    clippy::create_dir,
+    clippy::dbg_macro,
+    clippy::decimal_literal_representation,
+    clippy::else_if_without_else,
+    clippy::exit,
+    clippy::filetype_is_file,
+    clippy::float_arithmetic,
+    clippy::float_cmp_const,
+    clippy::get_unwrap,
+    clippy::inline_asm_x86_att_syntax,
+    clippy::inline_asm_x86_intel_syntax,
+    clippy::let_underscore_must_use,
+    clippy::lossy_float_literal,
+    clippy::map_err_ignore,
+    clippy::mem_forget,
+    //clippy::missing_docs_in_private_items,
+    clippy::modulo_arithmetic,
+    clippy::multiple_inherent_impl,
+    clippy::panic,
+    clippy::panic_in_result_fn,
+    clippy::pattern_type_mismatch,
+    clippy::print_stderr,
+    clippy::print_stdout,
+    clippy::rc_buffer,
+    clippy::rest_pat_in_fully_bound_structs,
+    clippy::shadow_same,
+    clippy::str_to_string,
+    clippy::string_to_string,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::unneeded_field_pattern,
+    clippy::unwrap_used,
+    clippy::use_debug,
+    clippy::verbose_file_reads,
+    clippy::wildcard_enum_match_arm,
+    clippy::wrong_pub_self_convention
+)]
+
+use std::{
+    env,
+    net::{IpAddr, ToSocketAddrs},
+    str::FromStr,
 };
+
+use askama::Template;
+use async_std::task;
+use async_std_resolver::{proto::rr::Name, resolver_from_system_conf, AsyncStdResolver};
+use include_flate::flate;
+use maxminddb::{geoip2, Reader};
+use serde::Serialize;
+use tide::{
+    http::{headers, mime},
+    Request, Response,
+};
+
+flate!(static DB_IP: [u8] from "assets/dbip-country-lite.mmdb");
 
 #[derive(Clone)]
 struct State {
-    template: Tera,
     resolver: AsyncStdResolver,
+    hostname: String,
 }
 
-flate!(static DB_IP: str from "assets/dbip-country-lite.csv");
+#[derive(Template, Serialize)]
+#[template(path = "index.html")]
+struct IndexTemplate {
+    ip: String,
+    host: String,
+    port: String,
+    ua: String,
+    lang: String,
+    encoding: String,
+    method: String,
+    mime: String,
+    referer: String,
+    forwarded: String,
+    country_code: String,
+    #[serde(skip)]
+    ifconfig_hostname: String,
+    #[serde(skip)]
+    hash_as_yaml: String,
+    #[serde(skip)]
+    hash_as_json: String,
+}
 
-const UNKNOWN: &'static str = "unknown";
+const UNKNOWN: &str = "unknown";
 
 fn main() -> Result<(), std::io::Error> {
-    block_on(async {
-        let mut tera = Tera::default();
-        tera.add_raw_template("index", include_str!("./templates/index.html"))
-            .unwrap();
+    let listen = env::var("LISTEN_ADDR").unwrap_or_else(|_| "localhost:3000".to_owned());
+    let hostname = env::var("HOSTNAME").unwrap_or_else(|_| "localhost".to_owned());
 
-        let resolver = resolver_from_system_conf().await.unwrap();
+    {
+        let _a = DB_IP.as_slice();
+    }
 
-        let state = State {
-            template: tera,
-            resolver,
-        };
+    task::block_on(async {
+        let resolver = resolver_from_system_conf()
+            .await
+            .expect("resolver initialized");
+
+        let state = State { resolver, hostname };
         let mut app = tide::with_state(state);
-        app.at("/").all(index);
-        app.at("/ip").all(ip);
-        app.at("/host").all(host);
-        app.at("/country_code").all(country_code);
-        app.at("/ua").all(ua);
-        app.at("/port").all(port);
-        app.at("/lang").all(lang);
-        app.at("/encoding").all(encoding);
-        app.at("/mime").all(mime);
-        app.at("/forwarded").all(forwarded);
-        app.at("/all").all(all);
-        app.at("/all.xml").all(all_xml);
-        app.at("/all.json").all(all_json);
+        let _ = app.at("/").all(index);
+        let _ = app.at("/ip").all(ip);
+        let _ = app.at("/host").all(host);
+        let _ = app.at("/country_code").all(country_code);
+        let _ = app.at("/ua").all(ua);
+        let _ = app.at("/port").all(port);
+        let _ = app.at("/lang").all(lang);
+        let _ = app.at("/encoding").all(encoding);
+        let _ = app.at("/mime").all(mime);
+        let _ = app.at("/forwarded").all(forwarded);
+        let _ = app.at("/all").all(all);
+        let _ = app.at("/all.json").all(all_json);
 
-        app.listen("0.0.0.0:3000".to_socket_addrs()?.collect::<Vec<_>>())
+        app.listen(listen.to_socket_addrs()?.collect::<Vec<_>>())
             .await?;
         Ok(())
     })
@@ -62,7 +143,7 @@ fn peer(remote: Option<&str>) -> (String, String) {
         None => (UNKNOWN.to_owned(), UNKNOWN.to_owned()),
         Some(peer) => match peer.rsplit_once(":") {
             None => (UNKNOWN.to_owned(), UNKNOWN.to_owned()),
-            Some((peer, port)) => (peer.to_string(), port.to_string()),
+            Some((peer, port)) => (peer.to_owned(), port.to_owned()),
         },
     }
 }
@@ -79,17 +160,79 @@ async fn resolve(resolver: &AsyncStdResolver, peer_addr: Option<&str>) -> String
                 Ok(addr) => resolver
                     .reverse_lookup(addr)
                     .await
-                    .unwrap()
+                    .expect("reverse lookup from ip addr")
                     .iter()
                     .next()
-                    .map(|v| v.to_utf8()),
+                    .map(Name::to_utf8),
             }
         }
     }
-    .unwrap_or("".to_owned())
+    .unwrap_or_else(|| "".to_owned())
 }
+
 async fn country(peer: &str) -> String {
-    "ToDo!".to_owned()
+    match IpAddr::from_str(peer) {
+        Err(_) => "".to_owned(),
+        Ok(addr) => {
+            let reader = Reader::from_source(&*DB_IP).expect("geoip database");
+            match reader.lookup::<geoip2::Country>(addr) {
+                Err(_) => "".to_owned(),
+                Ok(country) => country
+                    .country
+                    .map_or("", |c| c.iso_code.unwrap_or_default())
+                    .to_owned(),
+            }
+        }
+    }
+}
+
+async fn fill_struct<'a>(req: Request<State>) -> IndexTemplate {
+    let peer = peer(req.peer_addr());
+
+    let ua = req
+        .header(headers::USER_AGENT)
+        .map(|v| v.as_str())
+        .unwrap_or_default()
+        .to_owned();
+
+    let resolver = &req.state().resolver;
+    let hostname = &req.state().hostname;
+
+    let country_code = country(&peer.0).await;
+
+    IndexTemplate {
+        ifconfig_hostname: hostname.clone(),
+        ip: peer.0,
+        host: resolve(resolver, req.peer_addr()).await,
+        port: peer.1,
+        ua,
+        lang: req
+            .header(headers::ACCEPT_LANGUAGE)
+            .map_or("", |v| v.as_str())
+            .to_owned(),
+        encoding: req
+            .header(headers::ACCEPT_ENCODING)
+            .map_or("", |v| v.as_str())
+            .to_owned(),
+        method: req.method().to_string(),
+        mime: req
+            .header(headers::ACCEPT)
+            .map_or("", |v| v.as_str())
+            .to_owned(),
+        referer: req
+            .header(headers::REFERER)
+            .map_or("", |v| v.as_str())
+            .to_owned(),
+        forwarded: req
+            .header(
+                headers::HeaderName::from_bytes(b"X-Forwarded-For".to_vec()).expect("header name"),
+            )
+            .map_or("", |v| v.as_str())
+            .to_owned(),
+        country_code,
+        hash_as_yaml: "".to_owned(),
+        hash_as_json: "".to_owned(),
+    }
 }
 
 async fn index(req: Request<State>) -> tide::Result<Response> {
@@ -99,72 +242,35 @@ async fn index(req: Request<State>) -> tide::Result<Response> {
         None => ("", ""),
         Some(ua) => ua
             .split_once('/')
-            .map(|(soft, _)| (soft, ua))
-            .unwrap_or_else(|| (ua, ua)),
+            .map_or_else(|| (ua, ua), |(soft, _)| (soft, ua)),
     };
 
-    if "" == ua.0 || "curl" == ua.0 {
-        return Ok(Response::builder(200).body(peer.0.to_string()).build());
+    if ua.0.is_empty() || "curl" == ua.0 {
+        return Ok(Response::builder(200).body(peer.0).build());
     }
 
-    let resolver = &req.state().resolver;
-    let template = &req.state().template;
+    let mut index = fill_struct(req).await;
+    index.hash_as_yaml = serde_yaml::to_string(&index).expect("yaml data");
+    index.hash_as_json = serde_json::to_string(&index).expect("json data");
 
-    let mut context = Context::new();
-    context.insert("ifconfig_hostname", "ifconfig_hostname");
-    context.insert("ip", &peer.0);
-    context.insert("host", &resolve(resolver, req.peer_addr()).await);
-    context.insert("port", &peer.1);
-    context.insert("ua", ua.1);
-    context.insert(
-        "lang",
-        req.header(headers::ACCEPT_LANGUAGE)
-            .map(|v| v.as_str())
-            .unwrap_or(""),
-    );
-    context.insert(
-        "encoding",
-        req.header(headers::ACCEPT_ENCODING)
-            .map(|v| v.as_str())
-            .unwrap_or(""),
-    );
-    context.insert("method", &req.method().to_string());
-    context.insert(
-        "mime",
-        req.header(headers::ACCEPT)
-            .map(|v| v.as_str())
-            .unwrap_or(""),
-    );
-    context.insert(
-        "referer",
-        req.header(headers::REFERER)
-            .map(|v| v.as_str())
-            .unwrap_or(""),
-    );
-    context.insert(
-        "forwarded",
-        req.header(unsafe { HeaderName::from_bytes_unchecked(b"X-Forwarded-For".to_vec()) })
-            .map(|v| v.as_str())
-            .unwrap_or(""),
-    );
-    context.insert("country_code", &country(&peer.0).await);
-    context.insert("hash_as_yaml", "hash_as_yaml");
-    context.insert("hash_as_xml", "hash_as_xmll");
-    context.insert("hash_as_json", "hash_as_json");
+    let index = index.render()?;
 
     Ok(Response::builder(200)
-        .body(template.render("index", &context).unwrap())
+        .body(index)
         .content_type(mime::HTML)
         .build())
 }
+
 async fn ip(req: Request<State>) -> tide::Result<String> {
     let peer = peer(req.peer_addr());
     Ok(peer.0)
 }
+
 async fn host(req: Request<State>) -> tide::Result<String> {
     let resolver = &req.state().resolver;
     Ok(resolve(resolver, req.peer_addr()).await)
 }
+
 async fn country_code(req: Request<State>) -> tide::Result<Response> {
     let peer = peer(req.peer_addr());
     Ok(Response::builder(200)
@@ -172,51 +278,57 @@ async fn country_code(req: Request<State>) -> tide::Result<Response> {
         .body(country(&peer.0).await)
         .build())
 }
+
 async fn ua(req: Request<State>) -> tide::Result<String> {
     Ok(req
         .header(headers::USER_AGENT)
-        .map(|v| v.as_str())
-        .unwrap_or("")
-        .to_string())
+        .map_or("", |v| v.as_str())
+        .to_owned())
 }
+
 async fn port(req: Request<State>) -> tide::Result<String> {
     let peer = peer(req.peer_addr());
     Ok(peer.1)
 }
+
 async fn lang(req: Request<State>) -> tide::Result<String> {
     Ok(req
         .header(headers::ACCEPT_LANGUAGE)
-        .map(|v| v.as_str())
-        .unwrap_or("")
-        .to_string())
+        .map_or("", |v| v.as_str())
+        .to_owned())
 }
+
 async fn encoding(req: Request<State>) -> tide::Result<String> {
     Ok(req
         .header(headers::ACCEPT_ENCODING)
-        .map(|v| v.as_str())
-        .unwrap_or("")
-        .to_string())
+        .map_or("", |v| v.as_str())
+        .to_owned())
 }
+
 async fn mime(req: Request<State>) -> tide::Result<String> {
     Ok(req
         .header(headers::ACCEPT)
-        .map(|v| v.as_str())
-        .unwrap_or("")
-        .to_string())
+        .map_or("", |v| v.as_str())
+        .to_owned())
 }
+
 async fn forwarded(req: Request<State>) -> tide::Result<String> {
     Ok(req
-        .header(unsafe { HeaderName::from_bytes_unchecked(b"X-Forwarded-For".to_vec()) })
-        .map(|v| v.as_str())
-        .unwrap_or("")
-        .to_string())
+        .header(headers::HeaderName::from_bytes(b"X-Forwarded-For".to_vec()).expect("header name"))
+        .map_or("", |v| v.as_str())
+        .to_owned())
 }
-async fn all(req: Request<State>) -> tide::Result {
-    todo!()
+
+async fn all(req: Request<State>) -> tide::Result<Response> {
+    Ok(Response::builder(200)
+        .content_type("application/yaml")
+        .body(serde_yaml::to_string(&fill_struct(req).await)?)
+        .build())
 }
-async fn all_xml(req: Request<State>) -> tide::Result {
-    todo!()
-}
-async fn all_json(req: Request<State>) -> tide::Result {
-    todo!()
+
+async fn all_json(req: Request<State>) -> tide::Result<Response> {
+    Ok(Response::builder(200)
+        .content_type(mime::JSON)
+        .body(serde_json::to_string(&fill_struct(req).await)?)
+        .build())
 }

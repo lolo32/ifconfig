@@ -1,0 +1,6 @@
+edition = "2018"
+imports_granularity = "Crate"
+newline_style = "Unix"
+group_imports = "StdExternalCrate"
+use_field_init_shorthand = true
+wrap_comments = true
