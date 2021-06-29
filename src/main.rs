@@ -187,7 +187,7 @@ async fn country(peer: &str) -> String {
 }
 
 async fn fill_struct<'a>(req: Request<State>) -> IndexTemplate {
-    let peer = peer(req.peer_addr());
+    let peer = peer(req.remote());
 
     let ua = req
         .header(headers::USER_AGENT)
@@ -203,7 +203,7 @@ async fn fill_struct<'a>(req: Request<State>) -> IndexTemplate {
     IndexTemplate {
         ifconfig_hostname: hostname.clone(),
         ip: peer.0,
-        host: resolve(resolver, req.peer_addr()).await,
+        host: resolve(resolver, req.remote()).await,
         port: peer.1,
         ua,
         lang: req
@@ -236,7 +236,7 @@ async fn fill_struct<'a>(req: Request<State>) -> IndexTemplate {
 }
 
 async fn index(req: Request<State>) -> tide::Result<Response> {
-    let peer = peer(req.peer_addr());
+    let peer = peer(req.remote());
 
     let ua = match req.header(headers::USER_AGENT).map(|v| v.as_str()) {
         None => ("", ""),
@@ -262,17 +262,17 @@ async fn index(req: Request<State>) -> tide::Result<Response> {
 }
 
 async fn ip(req: Request<State>) -> tide::Result<String> {
-    let peer = peer(req.peer_addr());
+    let peer = peer(req.remote());
     Ok(peer.0)
 }
 
 async fn host(req: Request<State>) -> tide::Result<String> {
     let resolver = &req.state().resolver;
-    Ok(resolve(resolver, req.peer_addr()).await)
+    Ok(resolve(resolver, req.remote()).await)
 }
 
 async fn country_code(req: Request<State>) -> tide::Result<Response> {
-    let peer = peer(req.peer_addr());
+    let peer = peer(req.remote());
     Ok(Response::builder(200)
         .header("X-IP-Geolocation-By", "https://db-ip.com/")
         .body(country(&peer.0).await)
@@ -287,7 +287,7 @@ async fn ua(req: Request<State>) -> tide::Result<String> {
 }
 
 async fn port(req: Request<State>) -> tide::Result<String> {
-    let peer = peer(req.peer_addr());
+    let peer = peer(req.remote());
     Ok(peer.1)
 }
 
