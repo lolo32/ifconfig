@@ -143,7 +143,10 @@ fn peer(remote: Option<&str>) -> (String, String) {
         None => (UNKNOWN.to_owned(), UNKNOWN.to_owned()),
         Some(peer) => match peer.rsplit_once(":") {
             None => (UNKNOWN.to_owned(), UNKNOWN.to_owned()),
-            Some((peer, port)) => (peer.to_owned(), port.to_owned()),
+            Some((peer, port)) => (
+                peer.strip_prefix("::ffff:").unwrap_or(peer).to_owned(),
+                port.to_owned(),
+            ),
         },
     }
 }
