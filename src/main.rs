@@ -164,13 +164,10 @@ async fn resolve(resolver: &AsyncStdResolver, peer_addr: Option<&str>) -> String
 
             match addr {
                 Err(_) => None,
-                Ok(addr) => resolver
-                    .reverse_lookup(addr)
-                    .await
-                    .expect("reverse lookup from ip addr")
-                    .iter()
-                    .next()
-                    .map(Name::to_utf8),
+                Ok(addr) => match resolver.reverse_lookup(addr).await {
+                    Ok(resolved_hostnames) => resolved_hostnames.iter().next().map(Name::to_utf8),
+                    Err(_) => Some(addr.to_string()),
+                },
             }
         }
     }
