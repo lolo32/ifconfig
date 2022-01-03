@@ -213,12 +213,12 @@ async fn fill_struct<'a>(req: Request<State>) -> IndexTemplate {
         .to_owned();
 
     let resolver = &req.state().resolver;
-    let hostname = &req.state().hostname;
+    let hostname = req.header(headers::HOST).map_or_else(|| req.state().hostname.clone(), |hostname| hostname.to_string());
 
     let country_code = country(&peer.0).await;
 
     IndexTemplate {
-        ifconfig_hostname: hostname.clone(),
+        ifconfig_hostname: hostname,
         ip: peer.0,
         host: resolve(resolver, req.remote()).await,
         port: peer.1.parse().unwrap(),
