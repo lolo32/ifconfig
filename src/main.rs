@@ -69,6 +69,7 @@ use maxminddb::{geoip2, Reader};
 use serde::Serialize;
 use tide::{
     http::{headers, mime},
+    utils::After,
     Request, Response,
 };
 
@@ -119,6 +120,18 @@ fn main() -> Result<(), std::io::Error> {
 
         let state = State { resolver, hostname };
         let mut app = tide::with_state(state);
+
+        let _ = app.with(After(|mut response: Response| async move {
+            response.insert_header(
+                headers::CACHE_CONTROL,
+                "no-cache, no-store, must-revalidate",
+            );
+            response.insert_header(headers::PRAGMA, "no-cache");
+            response.insert_header(headers::EXPIRES, "0");
+
+            Ok(response)
+        }));
+
         let _ = app.at("/").all(index);
         let _ = app.at("/ip").all(ip);
         let _ = app.at("/host").all(host);
