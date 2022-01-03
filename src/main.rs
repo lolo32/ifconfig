@@ -213,7 +213,10 @@ async fn fill_struct<'a>(req: Request<State>) -> IndexTemplate {
         .to_owned();
 
     let resolver = &req.state().resolver;
-    let hostname = req.header(headers::HOST).map_or_else(|| req.state().hostname.clone(), |hostname| hostname.to_string());
+    let hostname = req.header(headers::HOST).map_or_else(
+        || req.state().hostname.clone(),
+        |hostname| hostname.get(0).unwrap().to_string(),
+    );
 
     let country_code = country(&peer.0).await;
 
