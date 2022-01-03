@@ -339,6 +339,7 @@ async fn forwarded(req: Request<State>) -> tide::Result<String> {
 async fn all(req: Request<State>) -> tide::Result<Response> {
     Ok(Response::builder(200)
         .content_type("application/yaml")
+        .header("X-IP-Geolocation-By", "https://db-ip.com/")
         .body(serde_yaml::to_string(&fill_struct(req).await)?)
         .build())
 }
@@ -346,6 +347,7 @@ async fn all(req: Request<State>) -> tide::Result<Response> {
 async fn all_json(req: Request<State>) -> tide::Result<Response> {
     Ok(Response::builder(200)
         .content_type(mime::JSON)
+        .header("X-IP-Geolocation-By", "https://db-ip.com/")
         .body(serde_json::to_string(&fill_struct(req).await)?)
         .build())
 }
