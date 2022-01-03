@@ -86,7 +86,7 @@ struct State {
 struct IndexTemplate {
     ip: String,
     host: String,
-    port: String,
+    port: u16,
     ua: String,
     lang: String,
     encoding: String,
@@ -221,7 +221,7 @@ async fn fill_struct<'a>(req: Request<State>) -> IndexTemplate {
         ifconfig_hostname: hostname.clone(),
         ip: peer.0,
         host: resolve(resolver, req.remote()).await,
-        port: peer.1,
+        port: peer.1.parse().unwrap(),
         ua,
         lang: req
             .header(headers::ACCEPT_LANGUAGE)
