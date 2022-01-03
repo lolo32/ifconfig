@@ -154,12 +154,12 @@ fn main() -> Result<(), std::io::Error> {
 fn peer(remote: Option<&str>) -> (String, String) {
     match remote {
         None => (UNKNOWN.to_owned(), UNKNOWN.to_owned()),
-        Some(peer) => match peer.rsplit_once(":") {
+        Some(peer) => match peer.rsplit_once(':') {
             None => (UNKNOWN.to_owned(), UNKNOWN.to_owned()),
             Some((peer, port)) => (
                 {
-                    let peer = peer.strip_prefix("[").unwrap_or(peer);
-                    let peer = peer.strip_suffix("]").unwrap_or(peer);
+                    let peer = peer.strip_prefix('[').unwrap_or(peer);
+                    let peer = peer.strip_suffix(']').unwrap_or(peer);
                     peer.strip_prefix("::ffff:").unwrap_or(peer).to_owned()
                 },
                 port.to_owned(),
