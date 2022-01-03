@@ -224,7 +224,7 @@ async fn fill_struct<'a>(req: Request<State>) -> IndexTemplate {
         ifconfig_hostname: hostname,
         ip: peer.0,
         host: resolve(resolver, req.remote()).await,
-        port: peer.1.parse().unwrap(),
+        port: peer.1.parse().expect("port number"),
         ua,
         lang: req
             .header(headers::ACCEPT_LANGUAGE)
