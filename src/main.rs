@@ -11,9 +11,13 @@
     unused_results,
     clippy::all,
     clippy::pedantic,
-    clippy::nursery
+    clippy::nursery,
 )]
-#![allow(clippy::cast_possible_truncation, clippy::redundant_pub_crate)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::redundant_pub_crate,
+    clippy::unused_async,
+)]
 // Clippy rules in the `Restriction lints`
 #![deny(
     clippy::clone_on_ref_ptr,
@@ -52,7 +56,6 @@
     clippy::use_debug,
     clippy::verbose_file_reads,
     clippy::wildcard_enum_match_arm,
-    clippy::wrong_pub_self_convention
 )]
 
 use std::{
@@ -178,7 +181,12 @@ async fn resolve(resolver: &AsyncStdResolver, peer_addr: Option<&str>) -> String
             match addr {
                 Err(_) => None,
                 Ok(addr) => match resolver.reverse_lookup(addr).await {
-                    Ok(resolved_hostnames) => resolved_hostnames.iter().next().map(Name::to_utf8),
+                    Ok(resolved_hostnames) => resolved_hostnames.iter().next().map(|name| {
+                        Name::to_utf8(name)
+                            .strip_suffix('.')
+                            .expect("peer remote name")
+                            .to_owned()
+                    }),
                     Err(_) => Some(addr.to_string()),
                 },
             }
@@ -203,20 +211,16 @@ async fn country(peer: &str) -> String {
     }
 }
 
-async fn fill_struct<'a>(req: Request<State>) -> IndexTemplate {
+async fn fill_struct(req: Request<State>) -> IndexTemplate {
     let peer = peer(req.remote());
 
-    let ua = req
-        .header(headers::USER_AGENT)
-        .map(|v| v.as_str())
-        .unwrap_or_default()
-        .to_owned();
+    let ua = extract_header(&req, headers::USER_AGENT);
 
     let resolver = &req.state().resolver;
-    let hostname = req.header(headers::HOST).map_or_else(
-        || req.state().hostname.clone(),
-        |hostname| hostname.get(0).unwrap().to_string(),
-    );
+    let hostname = match extract_header(&req, headers::HOST).as_str() {
+        "" => req.state().hostname.clone(),
+        hostname => hostname.to_owned(),
+    };
 
     let country_code = country(&peer.0).await;
 
@@ -226,41 +230,32 @@ async fn fill_struct<'a>(req: Request<State>) -> IndexTemplate {
         host: resolve(resolver, req.remote()).await,
         port: peer.1.parse().expect("port number"),
         ua,
-        lang: req
-            .header(headers::ACCEPT_LANGUAGE)
-            .map_or("", |v| v.as_str())
-            .to_owned(),
-        encoding: req
-            .header(headers::ACCEPT_ENCODING)
-            .map_or("", |v| v.as_str())
-            .to_owned(),
+        lang: extract_header(&req, headers::ACCEPT_LANGUAGE),
+        encoding: extract_header(&req, headers::ACCEPT_ENCODING),
         method: req.method().to_string(),
-        mime: req
-            .header(headers::ACCEPT)
-            .map_or("", |v| v.as_str())
-            .to_owned(),
-        referer: req
-            .header(headers::REFERER)
-            .map_or("", |v| v.as_str())
-            .to_owned(),
-        forwarded: req
-            .header(
-                headers::HeaderName::from_bytes(b"X-Forwarded-For".to_vec()).expect("header name"),
-            )
-            .map_or("", |v| v.as_str())
-            .to_owned(),
+        mime: extract_header(&req, headers::ACCEPT),
+        referer: extract_header(&req, headers::REFERER),
+        forwarded: extract_header(&req, "X-Forwarded-For"),
         country_code,
         hash_as_yaml: "".to_owned(),
         hash_as_json: "".to_owned(),
     }
 }
 
+#[inline]
+fn extract_header(req: &Request<State>, header_name: impl Into<headers::HeaderName>) -> String {
+    req.header(header_name)
+        .map_or("", |v| v.as_str())
+        .to_owned()
+}
+
 async fn index(req: Request<State>) -> tide::Result<Response> {
     let peer = peer(req.remote());
 
-    let ua = match req.header(headers::USER_AGENT).map(|v| v.as_str()) {
-        None => ("", ""),
-        Some(ua) => ua
+    let ua = extract_header(&req, headers::USER_AGENT);
+    let ua = match ua.as_str() {
+        "" => ("", ""),
+        ua => ua
             .split_once('/')
             .map_or_else(|| (ua, ua), |(soft, _)| (soft, ua)),
     };
@@ -300,10 +295,7 @@ async fn country_code(req: Request<State>) -> tide::Result<Response> {
 }
 
 async fn ua(req: Request<State>) -> tide::Result<String> {
-    Ok(req
-        .header(headers::USER_AGENT)
-        .map_or("", |v| v.as_str())
-        .to_owned())
+    Ok(extract_header(&req, headers::USER_AGENT))
 }
 
 async fn port(req: Request<State>) -> tide::Result<String> {
@@ -312,31 +304,19 @@ async fn port(req: Request<State>) -> tide::Result<String> {
 }
 
 async fn lang(req: Request<State>) -> tide::Result<String> {
-    Ok(req
-        .header(headers::ACCEPT_LANGUAGE)
-        .map_or("", |v| v.as_str())
-        .to_owned())
+    Ok(extract_header(&req, headers::ACCEPT_LANGUAGE))
 }
 
 async fn encoding(req: Request<State>) -> tide::Result<String> {
-    Ok(req
-        .header(headers::ACCEPT_ENCODING)
-        .map_or("", |v| v.as_str())
-        .to_owned())
+    Ok(extract_header(&req, headers::ACCEPT_ENCODING))
 }
 
 async fn mime(req: Request<State>) -> tide::Result<String> {
-    Ok(req
-        .header(headers::ACCEPT)
-        .map_or("", |v| v.as_str())
-        .to_owned())
+    Ok(extract_header(&req, headers::ACCEPT))
 }
 
 async fn forwarded(req: Request<State>) -> tide::Result<String> {
-    Ok(req
-        .header(headers::HeaderName::from_bytes(b"X-Forwarded-For".to_vec()).expect("header name"))
-        .map_or("", |v| v.as_str())
-        .to_owned())
+    Ok(extract_header(&req, "X-Forwarded-For"))
 }
 
 async fn all(req: Request<State>) -> tide::Result<Response> {
