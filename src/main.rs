@@ -16,7 +16,7 @@
 #![allow(
     clippy::cast_possible_truncation,
     clippy::redundant_pub_crate,
-    clippy::unused_async,
+    clippy::unused_async
 )]
 // Clippy rules in the `Restriction lints`
 #![deny(
@@ -163,12 +163,9 @@ fn main() -> Result<(), std::io::Error> {
 
         let _ = app.with(MyLogger);
         let _ = app.with(After(|mut response: Response| async move {
-            response.insert_header(
-                headers::CACHE_CONTROL,
-                "no-cache, no-store, must-revalidate",
-            );
+            response.insert_header(headers::CACHE_CONTROL, "no-store");
             response.insert_header(headers::PRAGMA, "no-cache");
-            response.insert_header(headers::EXPIRES, "0");
+            response.insert_header(headers::EXPIRES, "-1");
 
             Ok(response)
         }));
