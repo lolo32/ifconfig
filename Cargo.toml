@@ -13,10 +13,13 @@ version = "1"
 default-features = false
 
 [dependencies.async-std-resolver]
-version = "0.20.3"
+version = "0.21"
+
+[dependencies.async-trait]
+version = "0.1"
 
 [dependencies.include-flate]
-version = "0.1.3"
+version = "0.1"
 default-features = false
 
 [dependencies.maxminddb]
@@ -39,6 +42,15 @@ version = "0.16"
 default-features = false
 features = [
     "h1-server"
+]
+
+[dependencies.tracing]
+version = "0.1"
+
+[dependencies.tracing-subscriber]
+version = "0.3"
+features = [
+    "env-filter"
 ]
 
 [profile.release]

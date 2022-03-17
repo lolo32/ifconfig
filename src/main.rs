@@ -62,6 +62,7 @@ use std::{
     env,
     net::{IpAddr, ToSocketAddrs},
     str::FromStr,
+    time::Instant,
 };
 
 use askama::Template;
@@ -73,8 +74,9 @@ use serde::Serialize;
 use tide::{
     http::{headers, mime},
     utils::After,
-    Request, Response,
+    Middleware, Next, Request, Response,
 };
+use tracing_subscriber::EnvFilter;
 
 flate!(static DB_IP: [u8] from "assets/dbip-country-lite.mmdb");
 
@@ -108,11 +110,46 @@ struct IndexTemplate {
 
 const UNKNOWN: &str = "unknown";
 
+#[derive(Debug, Copy, Clone)]
+pub struct MyLogger;
+#[async_trait::async_trait]
+impl<State> Middleware<State> for MyLogger
+where
+    State: Clone + Send + Sync + 'static,
+{
+    async fn handle(&self, request: Request<State>, next: Next<'_, State>) -> tide::Result {
+        let now = Instant::now();
+        let path = request.url().path().to_owned();
+        let method = request.method().to_string();
+        let response = next.run(request).await;
+        let status = response.status();
+        let duration = now.elapsed();
+        tracing::info!(
+            method = method.as_str(),
+            path = path.as_str(),
+            status = status.to_string().as_str(),
+            duration = format!("{:?}", duration).as_str(),
+        );
+        Ok(response)
+    }
+}
+
 fn main() -> Result<(), std::io::Error> {
+    tracing_subscriber::fmt()
+        // .json()
+        .compact()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_target(true)
+        .with_line_number(false)
+        .with_file(false)
+        .with_level(true)
+        .init();
+
     let listen = env::var("LISTEN_ADDR").unwrap_or_else(|_| "localhost:3000".to_owned());
     let hostname = env::var("HOSTNAME").unwrap_or_else(|_| "localhost".to_owned());
 
     {
+        tracing::debug!("Initialize DB_IP");
         let _a = DB_IP.as_slice();
     }
 
@@ -124,6 +161,7 @@ fn main() -> Result<(), std::io::Error> {
         let state = State { resolver, hostname };
         let mut app = tide::with_state(state);
 
+        let _ = app.with(MyLogger);
         let _ = app.with(After(|mut response: Response| async move {
             response.insert_header(
                 headers::CACHE_CONTROL,
@@ -149,8 +187,7 @@ fn main() -> Result<(), std::io::Error> {
         let _ = app.at("/all.json").all(all_json);
 
         app.listen(listen.to_socket_addrs()?.collect::<Vec<_>>())
-            .await?;
-        Ok(())
+            .await
     })
 }
 
