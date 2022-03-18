@@ -78,7 +78,8 @@ use tide::{
 };
 use tracing_subscriber::EnvFilter;
 
-flate!(static DB_IP: [u8] from "assets/dbip-country-lite.mmdb");
+flate!(static DB_IP: [u8] from "assets/dbip-country-lite-2022-03.mmdb");
+const MMDB_DATE: &str = "2022-03";
 
 #[derive(Clone)]
 struct State {
@@ -106,6 +107,8 @@ struct IndexTemplate {
     hash_as_yaml: String,
     #[serde(skip)]
     hash_as_json: String,
+    #[serde(skip)]
+    mmdb_date: &'static str,
 }
 
 const UNKNOWN: &str = "unknown";
@@ -166,6 +169,7 @@ fn main() -> Result<(), std::io::Error> {
             response.insert_header(headers::CACHE_CONTROL, "no-store");
             response.insert_header(headers::PRAGMA, "no-cache");
             response.insert_header(headers::EXPIRES, "-1");
+            response.insert_header(headers::CONNECTION, "Close");
 
             Ok(response)
         }));
@@ -273,6 +277,7 @@ async fn fill_struct(req: Request<State>) -> IndexTemplate {
         country_code,
         hash_as_yaml: "".to_owned(),
         hash_as_json: "".to_owned(),
+        mmdb_date: MMDB_DATE,
     }
 }
 
@@ -324,6 +329,7 @@ async fn country_code(req: Request<State>) -> tide::Result<Response> {
     let peer = peer(req.remote());
     Ok(Response::builder(200)
         .header("X-IP-Geolocation-By", "https://db-ip.com/")
+        .header("X-IP-Geolocation-Date", MMDB_DATE)
         .body(country(&peer.0).await)
         .build())
 }
@@ -357,6 +363,7 @@ async fn all(req: Request<State>) -> tide::Result<Response> {
     Ok(Response::builder(200)
         .content_type("application/yaml")
         .header("X-IP-Geolocation-By", "https://db-ip.com/")
+        .header("X-IP-Geolocation-Date", MMDB_DATE)
         .body(serde_yaml::to_string(&fill_struct(req).await)?)
         .build())
 }
@@ -365,6 +372,7 @@ async fn all_json(req: Request<State>) -> tide::Result<Response> {
     Ok(Response::builder(200)
         .content_type(mime::JSON)
         .header("X-IP-Geolocation-By", "https://db-ip.com/")
+        .header("X-IP-Geolocation-Date", MMDB_DATE)
         .body(serde_json::to_string(&fill_struct(req).await)?)
         .build())
 }
