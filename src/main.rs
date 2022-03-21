@@ -65,11 +65,11 @@ use std::{
     time::Instant,
 };
 
-use askama::Template;
 use async_std::task;
 use async_std_resolver::{proto::rr::Name, resolver_from_system_conf, AsyncStdResolver};
 use include_flate::flate;
 use maxminddb::{geoip2, Reader};
+use sailfish::TemplateOnce;
 use serde::Serialize;
 use tide::{
     http::{headers, mime},
@@ -87,7 +87,7 @@ struct State {
     hostname: String,
 }
 
-#[derive(Template, Serialize)]
+#[derive(TemplateOnce, Serialize)]
 #[template(path = "index.html")]
 struct IndexTemplate {
     ip: String,
@@ -307,7 +307,7 @@ async fn index(req: Request<State>) -> tide::Result<Response> {
     index.hash_as_yaml = serde_yaml::to_string(&index).expect("yaml data");
     index.hash_as_json = serde_json::to_string(&index).expect("json data");
 
-    let index = index.render()?;
+    let index = index.render_once()?;
 
     Ok(Response::builder(200)
         .body(index)

@@ -11,12 +11,12 @@
       /* GitHub */
       .github-fork-ribbon{width:12.1em;height:12.1em;position:absolute;overflow:hidden;top:0;right:0;z-index:9999;pointer-events:none;font-size:13px;text-decoration:none;text-indent:-999999px;}.github-fork-ribbon::after,.github-fork-ribbon::before{position:absolute;display:block;width:15.38em;height:1.54em;top:3.23em;right:-3.23em;-webkit-box-sizing:content-box;-moz-box-sizing:content-box;box-sizing:content-box;-webkit-transform:rotate(45deg);-moz-transform:rotate(45deg);-ms-transform:rotate(45deg);-o-transform:rotate(45deg);transform:rotate(45deg);}.github-fork-ribbon::after{content:attr(data-ribbon);color:#fff;font:700 1em "Helvetica Neue",Helvetica,Arial,sans-serif;line-height:normal;line-height:1.54em;text-decoration:none;text-shadow:0 -.08em rgba(0,0,0,.5);text-align:center;text-indent:0;padding:.15em 0;margin:.15em 0;border-width:.08em 0;border-style:dotted;border-color:#fff;border-color:rgba(255,255,255,.7);}.github-fork-ribbon::before{content:"";padding:.38em 0;background-color:#a00;background-image:-webkit-gradient(linear,left top,left bottom,from(rgba(0,0,0,0)),to(rgba(0,0,0,.15)));background-image:-webkit-linear-gradient(top,rgba(0,0,0,0),rgba(0,0,0,.15));background-image:-moz-linear-gradient(top,rgba(0,0,0,0),rgba(0,0,0,.15));background-image:-ms-linear-gradient(top,rgba(0,0,0,0),rgba(0,0,0,.15));background-image:-o-linear-gradient(top,rgba(0,0,0,0),rgba(0,0,0,.15));background-image:linear-gradient(to bottom,rgba(0,0,0,0),rgba(0,0,0,.15));-webkit-box-shadow:0 .15em .23em 0 rgba(0,0,0,.5);-moz-box-shadow:0 .15em .23em 0 rgba(0,0,0,.5);box-shadow:0 .15em .23em 0 rgba(0,0,0,.5);pointer-events:auto;}
     </style>
-    <title>{{ ifconfig_hostname }}</title>
+    <title><%= ifconfig_hostname %></title>
   </head>
   <body>
     <header class="page-header container">
       <a href="/" class="h1">
-        What is my ip address? - <small>{{ ifconfig_hostname }}</small>
+        What is my ip address? - <small><%= ifconfig_hostname %></small>
       </a>
     </header>
     <nav class="container"></nav>
@@ -27,37 +27,37 @@
         </div>
         <ul class="list-group">
           <li class="list-group-item">
-            <div class="col-sm-3">IP Address</div><div class="col-sm-9">{{ ip }}</div>
+            <div class="col-sm-3">IP Address</div><div class="col-sm-9"><%= ip %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-3">Remote Host</div><div class="col-sm-9">{{ host }}</div>
+            <div class="col-sm-3">Remote Host</div><div class="col-sm-9"><%= host %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-3">Country Code</div><div class="col-sm-9">{{ country_code }}</div>
+            <div class="col-sm-3">Country Code</div><div class="col-sm-9"><%= country_code %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-3">User Agent</div><div class="col-sm-9">{{ ua }}</div>
+            <div class="col-sm-3">User Agent</div><div class="col-sm-9"><%= ua %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-3">Port</div><div class="col-sm-9">{{ port }}</div>
+            <div class="col-sm-3">Port</div><div class="col-sm-9"><%= port %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-3">Language</div><div class="col-sm-9">{{ lang }}</div>
+            <div class="col-sm-3">Language</div><div class="col-sm-9"><%= lang %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-3">Referer</div><div class="col-sm-9">{{ referer }}</div>
+            <div class="col-sm-3">Referer</div><div class="col-sm-9"><%= referer %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-3">Method</div><div class="col-sm-9">{{ method }}</div>
+            <div class="col-sm-3">Method</div><div class="col-sm-9"><%= method %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-3">Encoding</div><div class="col-sm-9">{{ encoding }}</div>
+            <div class="col-sm-3">Encoding</div><div class="col-sm-9"><%= encoding %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-3">MIME Type</div><div class="col-sm-9">{{ mime }}</div>
+            <div class="col-sm-3">MIME Type</div><div class="col-sm-9"><%= mime %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-3">X-Forwarded-For</div><div class="col-sm-9">{{ forwarded }}</div>
+            <div class="col-sm-3">X-Forwarded-For</div><div class="col-sm-9"><%= forwarded %></div>
           </li>
         </ul>
       </div>
@@ -67,46 +67,46 @@
         </div>
         <ul class="list-group">
           <li class="list-group-item">
-            <div class="col-sm-4">$ curl {{ ifconfig_hostname }}</div><div class="col-sm-8">{{ ip }}</div>
+            <div class="col-sm-4">$ curl <%= ifconfig_hostname %></div><div class="col-sm-8"><%= ip %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-4">$ curl {{ ifconfig_hostname }}/ip</div><div class="col-sm-8">{{ ip }}</div>
+            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/ip</div><div class="col-sm-8"><%= ip %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-4">$ curl {{ ifconfig_hostname }}/host</div><div class="col-sm-8">{{ host }}</div>
+            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/host</div><div class="col-sm-8"><%= host %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-4">$ curl {{ ifconfig_hostname }}/country_code</div><div class="col-sm-8">{{ country_code }}</div>
+            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/country_code</div><div class="col-sm-8"><%= country_code %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-4">$ curl {{ ifconfig_hostname }}/ua</div><div class="col-sm-8">{{ ua }}</div>
+            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/ua</div><div class="col-sm-8"><%= ua %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-4">$ curl {{ ifconfig_hostname }}/port</div><div class="col-sm-8">{{ port }}</div>
+            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/port</div><div class="col-sm-8"><%= port %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-4">$ curl {{ ifconfig_hostname }}/lang</div><div class="col-sm-8">{{ lang }}</div>
+            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/lang</div><div class="col-sm-8"><%= lang %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-4">$ curl {{ ifconfig_hostname }}/encoding</div><div class="col-sm-8">{{ encoding }}</div>
+            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/encoding</div><div class="col-sm-8"><%= encoding %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-4">$ curl {{ ifconfig_hostname }}/mime</div><div class="col-sm-8">{{ mime }}</div>
+            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/mime</div><div class="col-sm-8"><%= mime %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-4">$ curl {{ ifconfig_hostname }}/forwarded</div><div class="col-sm-8">{{ forwarded }}</div>
+            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/forwarded</div><div class="col-sm-8"><%= forwarded %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-4">$ curl {{ ifconfig_hostname }}/all</div><div class="col-sm-8"><pre>{{ hash_as_yaml }}</pre></div>
+            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/all</div><div class="col-sm-8"><pre><%= hash_as_yaml %></pre></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-4">$ curl {{ ifconfig_hostname }}/all.json</div><div class="col-sm-8">{{ hash_as_json }}</div>
+            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/all.json</div><div class="col-sm-8"><%= hash_as_json %></div>
           </li>
         </ul>
       </div>
     </main>
     <footer class="container text-center">
-      <p><a href='https://db-ip.com'>IP Geolocation by DB-IP <em>(from {{ mmdb_date }})</em></a></p>
+      <p><a href='https://db-ip.com'>IP Geolocation by DB-IP <em>(from <%= mmdb_date %>)</em></a></p>
       <p>&copy; 2021 ifconfig.baysse.eu &mdash; <em>Based on <a href="https://github.com/georgyo/ifconfig.io">ifconfig.io</a></em></p>
       <a class="github-fork-ribbon" href="https://github.com/lolo32/ifconfig.io/" title="Fork me on GitHub" data-ribbon="Fork me on GitHub">Fork me on GitHub</a>
     </footer>
