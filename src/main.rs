@@ -2,7 +2,7 @@
     missing_copy_implementations,
     //missing_docs,
     missing_debug_implementations,
-    single_use_lifetimes,
+    //single_use_lifetimes,
     unsafe_code,
     unused_extern_crates,
     unused_import_braces,
@@ -62,13 +62,15 @@ use std::{
     env,
     net::{IpAddr, ToSocketAddrs},
     str::FromStr,
+    sync::Arc,
     time::Instant,
 };
 
 use async_std::task;
-use async_std_resolver::{proto::rr::Name, resolver_from_system_conf, AsyncStdResolver};
+use async_std_resolver::{resolver_from_system_conf, AsyncStdResolver};
 use include_flate::flate;
-use maxminddb::{geoip2, Reader};
+use maxminddb::{geoip2, MaxMindDBError, Reader};
+use regex::Regex;
 use sailfish::TemplateOnce;
 use serde::Serialize;
 use tide::{
@@ -81,26 +83,43 @@ use tracing_subscriber::EnvFilter;
 flate!(static DB_IP: [u8] from "assets/dbip-country-lite-2022-03.mmdb");
 const MMDB_DATE: &str = "2022-03";
 
+enum DbIp<'data> {
+    Inline(Reader<&'data Vec<u8>>),
+    External(Reader<Vec<u8>>),
+}
+
+impl<'data> DbIp<'data> {
+    fn lookup(&'data self, ip: IpAddr) -> Result<geoip2::Country<'data>, MaxMindDBError> {
+        match self {
+            Self::Inline(reader) => reader.lookup(ip),
+            Self::External(reader) => reader.lookup(ip),
+        }
+    }
+}
+
 #[derive(Clone)]
-struct State {
+struct State<'data> {
     resolver: AsyncStdResolver,
     hostname: String,
+    db_ip: Arc<DbIp<'data>>,
+    db_date: &'data str,
 }
 
 #[derive(TemplateOnce, Serialize)]
 #[template(path = "index.html")]
-struct IndexTemplate {
-    ip: String,
-    host: String,
+#[allow(unused_variables)]
+struct IndexTemplate<'a> {
+    ip: &'a str,
+    host: Vec<String>,
     port: u16,
-    ua: String,
-    lang: String,
-    encoding: String,
+    ua: &'a str,
+    lang: &'a str,
+    encoding: &'a str,
     method: String,
-    mime: String,
-    referer: String,
-    forwarded: String,
-    country_code: String,
+    mime: &'a str,
+    referer: &'a str,
+    forwarded: &'a str,
+    country_code: &'a str,
     #[serde(skip)]
     ifconfig_hostname: String,
     #[serde(skip)]
@@ -108,7 +127,11 @@ struct IndexTemplate {
     #[serde(skip)]
     hash_as_json: String,
     #[serde(skip)]
-    mmdb_date: &'static str,
+    mmdb_date: &'a str,
+    #[serde(skip)]
+    host_string: String,
+    #[serde(skip)]
+    host_json: String,
 }
 
 const UNKNOWN: &str = "unknown";
@@ -137,7 +160,13 @@ where
     }
 }
 
+fn string_to_static_str(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
 fn main() -> Result<(), std::io::Error> {
+    let _env = dotenv::dotenv();
+
     tracing_subscriber::fmt()
         // .json()
         .compact()
@@ -155,13 +184,36 @@ fn main() -> Result<(), std::io::Error> {
         tracing::debug!("Initialize DB_IP");
         let _a = DB_IP.as_slice();
     }
+    let (db_ip, db_date) = match env::var("DB_FILE") {
+        Ok(filename) => {
+            let reader = DbIp::External(Reader::open_readfile(&filename).expect("Geo IP filename"));
+            let date = {
+                let re = Regex::new(r#"(\d{4}-\d{2})"#).expect("date regexp");
+                let caps = re.captures(&filename);
+                match caps {
+                    Some(caps) => caps.get(1).expect("date").as_str().to_owned(),
+                    None => UNKNOWN.to_owned(),
+                }
+            };
+            (reader, date)
+        }
+        Err(_) => (
+            DbIp::Inline(Reader::from_source(&*DB_IP).expect("geoip database")),
+            MMDB_DATE.to_owned(),
+        ),
+    };
 
     task::block_on(async {
         let resolver = resolver_from_system_conf()
             .await
             .expect("resolver initialized");
 
-        let state = State { resolver, hostname };
+        let state = State {
+            resolver,
+            hostname,
+            db_ip: Arc::new(db_ip),
+            db_date: string_to_static_str(db_date),
+        };
         let mut app = tide::with_state(state);
 
         let _ = app.with(MyLogger);
@@ -192,118 +244,132 @@ fn main() -> Result<(), std::io::Error> {
     })
 }
 
-fn peer(remote: Option<&str>) -> (String, String) {
+fn peer(remote: Option<&str>) -> (&str, &str) {
     match remote {
-        None => (UNKNOWN.to_owned(), UNKNOWN.to_owned()),
+        None => (UNKNOWN, UNKNOWN),
         Some(peer) => match peer.rsplit_once(':') {
-            None => (UNKNOWN.to_owned(), UNKNOWN.to_owned()),
+            None => (UNKNOWN, UNKNOWN),
             Some((peer, port)) => (
                 {
                     let peer = peer.strip_prefix('[').unwrap_or(peer);
                     let peer = peer.strip_suffix(']').unwrap_or(peer);
-                    peer.strip_prefix("::ffff:").unwrap_or(peer).to_owned()
+                    peer.strip_prefix("::ffff:").unwrap_or(peer)
                 },
-                port.to_owned(),
+                port,
             ),
         },
     }
 }
 
-async fn resolve(resolver: &AsyncStdResolver, peer_addr: Option<&str>) -> String {
+async fn resolve(resolver: &AsyncStdResolver, peer_addr: Option<&str>) -> Vec<String> {
     match peer_addr {
-        None => None,
+        None => vec![],
         Some(addr) => {
             let (addr, _port) = peer(Some(addr));
-            let addr = IpAddr::from_str(&addr);
+            let addr = IpAddr::from_str(addr);
 
             match addr {
-                Err(_) => None,
+                Err(_) => vec![],
                 Ok(addr) => match resolver.reverse_lookup(addr).await {
-                    Ok(resolved_hostnames) => resolved_hostnames.iter().next().map(|name| {
-                        Name::to_utf8(name)
-                            .strip_suffix('.')
-                            .expect("peer remote name")
-                            .to_owned()
-                    }),
-                    Err(_) => Some(addr.to_string()),
+                    Ok(resolved_hostnames) => resolved_hostnames
+                        .iter()
+                        .map(|name| {
+                            name.to_utf8()
+                                .strip_suffix('.')
+                                .expect("peer remote name")
+                                .to_owned()
+                        })
+                        .collect::<Vec<_>>(),
+                    Err(_) => vec![addr.to_string()],
                 },
             }
         }
     }
-    .unwrap_or_else(|| "".to_owned())
 }
 
-async fn country(peer: &str) -> String {
+async fn country<'a>(db_ip: &'a DbIp<'_>, peer: &str) -> &'a str {
     match IpAddr::from_str(peer) {
-        Err(_) => "".to_owned(),
-        Ok(addr) => {
-            let reader = Reader::from_source(&*DB_IP).expect("geoip database");
-            match reader.lookup::<geoip2::Country>(addr) {
-                Err(_) => "".to_owned(),
-                Ok(country) => country
-                    .country
-                    .map_or("", |c| c.iso_code.unwrap_or_default())
-                    .to_owned(),
-            }
-        }
+        Err(_) => "",
+        Ok(addr) => match db_ip.lookup(addr) {
+            Err(_) => "",
+            Ok(country) => country
+                .country
+                .map_or("", |c| c.iso_code.unwrap_or_default()),
+        },
     }
 }
 
-async fn fill_struct(req: Request<State>) -> IndexTemplate {
-    let peer = peer(req.remote());
+async fn fill_struct<'a>(req: &'a Request<State<'a>>) -> IndexTemplate<'a> {
+    let (ip, port) = peer(req.remote());
 
-    let ua = extract_header(&req, headers::USER_AGENT);
+    let ua = extract_header(req, headers::USER_AGENT);
 
-    let resolver = &req.state().resolver;
-    let hostname = match extract_header(&req, headers::HOST).as_str() {
+    let state = req.state();
+    let resolver = &state.resolver;
+    let db_ip = &state.db_ip;
+    let db_date = state.db_date;
+
+    let hostname = match extract_header(req, headers::HOST) {
         "" => req.state().hostname.clone(),
         hostname => hostname.to_owned(),
     };
 
-    let country_code = country(&peer.0).await;
+    let country_code = country(db_ip, ip).await;
+    let host = resolve(resolver, req.remote()).await;
 
     IndexTemplate {
         ifconfig_hostname: hostname,
-        ip: peer.0,
-        host: resolve(resolver, req.remote()).await,
-        port: peer.1.parse().expect("port number"),
+        ip,
+        host_string: host.join(", "),
+        host_json: serde_json::to_string(&host).expect("json hosts array"),
+        host,
+        port: port.parse().expect("port number"),
         ua,
-        lang: extract_header(&req, headers::ACCEPT_LANGUAGE),
-        encoding: extract_header(&req, headers::ACCEPT_ENCODING),
+        lang: extract_header(req, headers::ACCEPT_LANGUAGE),
+        encoding: extract_header(req, headers::ACCEPT_ENCODING),
         method: req.method().to_string(),
-        mime: extract_header(&req, headers::ACCEPT),
-        referer: extract_header(&req, headers::REFERER),
-        forwarded: extract_header(&req, "X-Forwarded-For"),
+        mime: extract_header(req, headers::ACCEPT),
+        referer: extract_header(req, headers::REFERER),
+        forwarded: extract_header(req, "X-Forwarded-For"),
         country_code,
         hash_as_yaml: "".to_owned(),
         hash_as_json: "".to_owned(),
-        mmdb_date: MMDB_DATE,
+        mmdb_date: db_date,
     }
 }
 
 #[inline]
-fn extract_header(req: &Request<State>, header_name: impl Into<headers::HeaderName>) -> String {
-    req.header(header_name)
-        .map_or("", |v| v.as_str())
-        .to_owned()
+fn extract_header<'a>(
+    req: &'a Request<State<'_>>,
+    header_name: impl Into<headers::HeaderName>,
+) -> &'a str {
+    req.header(header_name).map_or("", |v| v.as_str())
 }
 
-async fn index(req: Request<State>) -> tide::Result<Response> {
-    let peer = peer(req.remote());
+fn convert_hostnames(hostnames: &[String]) -> String {
+    match hostnames.len() {
+        0 => "".to_owned(),
+        1 => hostnames.get(0).expect("hostname").clone(),
+        _ => serde_json::to_string(&hostnames).expect("json hostname list"),
+    }
+}
+
+async fn index(req: Request<State<'_>>) -> tide::Result<Response> {
+    let (ip, _port) = peer(req.remote());
 
     let ua = extract_header(&req, headers::USER_AGENT);
-    let ua = match ua.as_str() {
+    let ua = match ua {
         "" => ("", ""),
-        ua => ua
+        user_agent => user_agent
             .split_once('/')
-            .map_or_else(|| (ua, ua), |(soft, _)| (soft, ua)),
+            .map_or_else(|| (user_agent, user_agent), |(soft, _)| (soft, user_agent)),
     };
 
     if ua.0.is_empty() || "curl" == ua.0 {
-        return Ok(Response::builder(200).body(peer.0).build());
+        return Ok(Response::builder(200).body(ip).build());
     }
 
-    let mut index = fill_struct(req).await;
+    let mut index = fill_struct(&req).await;
     index.hash_as_yaml = serde_yaml::to_string(&index).expect("yaml data");
     index.hash_as_json = serde_json::to_string(&index).expect("json data");
 
@@ -315,64 +381,67 @@ async fn index(req: Request<State>) -> tide::Result<Response> {
         .build())
 }
 
-async fn ip(req: Request<State>) -> tide::Result<String> {
-    let peer = peer(req.remote());
-    Ok(peer.0)
+async fn ip(req: Request<State<'_>>) -> tide::Result<String> {
+    let (ip, _port) = peer(req.remote());
+    Ok(ip.to_owned())
 }
 
-async fn host(req: Request<State>) -> tide::Result<String> {
+async fn host(req: Request<State<'_>>) -> tide::Result<String> {
     let resolver = &req.state().resolver;
-    Ok(resolve(resolver, req.remote()).await)
+    let hostnames = resolve(resolver, req.remote()).await;
+    Ok(convert_hostnames(&hostnames))
 }
 
-async fn country_code(req: Request<State>) -> tide::Result<Response> {
-    let peer = peer(req.remote());
+async fn country_code(req: Request<State<'_>>) -> tide::Result<Response> {
+    let (ip, _port) = peer(req.remote());
+
+    let db_ip = &req.state().db_ip;
     Ok(Response::builder(200)
         .header("X-IP-Geolocation-By", "https://db-ip.com/")
         .header("X-IP-Geolocation-Date", MMDB_DATE)
-        .body(country(&peer.0).await)
+        .body(country(db_ip, ip).await)
         .build())
 }
 
-async fn ua(req: Request<State>) -> tide::Result<String> {
-    Ok(extract_header(&req, headers::USER_AGENT))
+async fn ua(req: Request<State<'_>>) -> tide::Result<String> {
+    Ok(extract_header(&req, headers::USER_AGENT).to_owned())
 }
 
-async fn port(req: Request<State>) -> tide::Result<String> {
-    let peer = peer(req.remote());
-    Ok(peer.1)
+async fn port(req: Request<State<'_>>) -> tide::Result<String> {
+    let (_ip, port) = peer(req.remote());
+    Ok(port.to_owned())
 }
 
-async fn lang(req: Request<State>) -> tide::Result<String> {
-    Ok(extract_header(&req, headers::ACCEPT_LANGUAGE))
+async fn lang(req: Request<State<'_>>) -> tide::Result<String> {
+    Ok(extract_header(&req, headers::ACCEPT_LANGUAGE).to_owned())
 }
 
-async fn encoding(req: Request<State>) -> tide::Result<String> {
-    Ok(extract_header(&req, headers::ACCEPT_ENCODING))
+async fn encoding(req: Request<State<'_>>) -> tide::Result<String> {
+    Ok(extract_header(&req, headers::ACCEPT_ENCODING).to_owned())
 }
 
-async fn mime(req: Request<State>) -> tide::Result<String> {
-    Ok(extract_header(&req, headers::ACCEPT))
+async fn mime(req: Request<State<'_>>) -> tide::Result<String> {
+    Ok(extract_header(&req, headers::ACCEPT).to_owned())
 }
 
-async fn forwarded(req: Request<State>) -> tide::Result<String> {
-    Ok(extract_header(&req, "X-Forwarded-For"))
+async fn forwarded(req: Request<State<'_>>) -> tide::Result<String> {
+    Ok(extract_header(&req, "X-Forwarded-For").to_owned())
 }
 
-async fn all(req: Request<State>) -> tide::Result<Response> {
+async fn all(req: Request<State<'_>>) -> tide::Result<Response> {
     Ok(Response::builder(200)
         .content_type("application/yaml")
         .header("X-IP-Geolocation-By", "https://db-ip.com/")
         .header("X-IP-Geolocation-Date", MMDB_DATE)
-        .body(serde_yaml::to_string(&fill_struct(req).await)?)
+        .body(serde_yaml::to_string(&fill_struct(&req).await)?)
         .build())
 }
 
-async fn all_json(req: Request<State>) -> tide::Result<Response> {
+async fn all_json(req: Request<State<'_>>) -> tide::Result<Response> {
     Ok(Response::builder(200)
         .content_type(mime::JSON)
         .header("X-IP-Geolocation-By", "https://db-ip.com/")
         .header("X-IP-Geolocation-Date", MMDB_DATE)
-        .body(serde_json::to_string(&fill_struct(req).await)?)
+        .body(serde_json::to_string(&fill_struct(&req).await)?)
         .build())
 }
