@@ -16,7 +16,8 @@
 #![allow(
     clippy::cast_possible_truncation,
     clippy::redundant_pub_crate,
-    clippy::unused_async
+    clippy::unused_async,
+    unused_variables
 )]
 // Clippy rules in the `Restriction lints`
 #![deny(
@@ -107,7 +108,6 @@ struct State<'data> {
 
 #[derive(TemplateOnce, Serialize)]
 #[template(path = "index.html")]
-#[allow(unused_variables)]
 struct IndexTemplate<'a> {
     ip: &'a str,
     host: Vec<String>,
@@ -321,7 +321,7 @@ async fn fill_struct<'a>(req: &'a Request<State<'a>>) -> IndexTemplate<'a> {
         ifconfig_hostname: hostname,
         ip,
         host_string: host.join(", "),
-        host_json: serde_json::to_string(&host).expect("json hosts array"),
+        host_json: convert_hostnames(&host),
         host,
         port: port.parse().expect("port number"),
         ua,
