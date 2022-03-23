@@ -91,9 +91,9 @@ enum DbIp<'data> {
 
 impl<'data> DbIp<'data> {
     fn lookup(&'data self, ip: IpAddr) -> Result<geoip2::Country<'data>, MaxMindDBError> {
-        match self {
-            Self::Inline(reader) => reader.lookup(ip),
-            Self::External(reader) => reader.lookup(ip),
+        match *self {
+            Self::Inline(ref reader) => reader.lookup(ip),
+            Self::External(ref reader) => reader.lookup(ip),
         }
     }
 }
@@ -304,10 +304,12 @@ async fn fill_struct<'a>(req: &'a Request<State<'a>>) -> IndexTemplate<'a> {
 
     let ua = extract_header(req, headers::USER_AGENT);
 
-    let state = req.state();
-    let resolver = &state.resolver;
-    let db_ip = &state.db_ip;
-    let db_date = state.db_date;
+    let State {
+        ref resolver,
+        ref db_ip,
+        db_date,
+        ..
+    } = *req.state();
 
     let hostname = match extract_header(req, headers::HOST) {
         "" => req.state().hostname.clone(),
@@ -387,7 +389,7 @@ async fn ip(req: Request<State<'_>>) -> tide::Result<String> {
 }
 
 async fn host(req: Request<State<'_>>) -> tide::Result<String> {
-    let resolver = &req.state().resolver;
+    let State { ref resolver, .. } = *req.state();
     let hostnames = resolve(resolver, req.remote()).await;
     Ok(convert_hostnames(&hostnames))
 }
@@ -395,10 +397,12 @@ async fn host(req: Request<State<'_>>) -> tide::Result<String> {
 async fn country_code(req: Request<State<'_>>) -> tide::Result<Response> {
     let (ip, _port) = peer(req.remote());
 
-    let db_ip = &req.state().db_ip;
+    let State {
+        ref db_ip, db_date, ..
+    } = *req.state();
     Ok(Response::builder(200)
         .header("X-IP-Geolocation-By", "https://db-ip.com/")
-        .header("X-IP-Geolocation-Date", MMDB_DATE)
+        .header("X-IP-Geolocation-Date", db_date)
         .body(country(db_ip, ip).await)
         .build())
 }
@@ -429,19 +433,21 @@ async fn forwarded(req: Request<State<'_>>) -> tide::Result<String> {
 }
 
 async fn all(req: Request<State<'_>>) -> tide::Result<Response> {
+    let State { db_date, .. } = *req.state();
     Ok(Response::builder(200)
         .content_type("application/yaml")
         .header("X-IP-Geolocation-By", "https://db-ip.com/")
-        .header("X-IP-Geolocation-Date", MMDB_DATE)
+        .header("X-IP-Geolocation-Date", db_date)
         .body(serde_yaml::to_string(&fill_struct(&req).await)?)
         .build())
 }
 
 async fn all_json(req: Request<State<'_>>) -> tide::Result<Response> {
+    let State { db_date, .. } = *req.state();
     Ok(Response::builder(200)
         .content_type(mime::JSON)
         .header("X-IP-Geolocation-By", "https://db-ip.com/")
-        .header("X-IP-Geolocation-Date", MMDB_DATE)
+        .header("X-IP-Geolocation-Date", db_date)
         .body(serde_json::to_string(&fill_struct(&req).await)?)
         .build())
 }
