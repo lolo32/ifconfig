@@ -19,7 +19,8 @@
                     "kind": "bin"
                 },
                 "env": {
-                    "RUST_LOG": "debug"
+                    "RUST_LOG": "debug",
+                    "RUSTFLAGS": "-C instrument-coverage"
                 }
             },
             "args": [],
@@ -39,6 +40,9 @@
                 "filter": {
                     "name": "ifconfig",
                     "kind": "bin"
+                },
+                "env": {
+                    "RUSTFLAGS": "-C instrument-coverage"
                 }
             },
             "args": [],
