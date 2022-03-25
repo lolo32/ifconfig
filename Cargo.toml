@@ -12,9 +12,6 @@ default-features = false
 [dependencies.async-std-resolver]
 version = "0.21"
 
-[dependencies.async-trait]
-version = "0.1"
-
 [dependencies.dotenv]
 version = "0.15"
 
@@ -61,6 +58,13 @@ version = "0.1"
 version = "0.3"
 features = [
     "env-filter"
+]
+
+[dev-dependencies.async-std]
+version = "1"
+default-features = false
+features = [
+    "attributes"
 ]
 
 [profile.release]
