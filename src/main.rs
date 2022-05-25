@@ -113,15 +113,13 @@ struct State<'data> {
 #[template(path = "index.html")]
 struct IndexTemplate<'a> {
     ip: &'a str,
-    host: Vec<String>,
-    port: u16,
+    host: String,
     ua: &'a str,
     lang: &'a str,
     encoding: &'a str,
     method: String,
     mime: &'a str,
     referer: &'a str,
-    forwarded: &'a str,
     country_code: &'a str,
     #[serde(skip)]
     ifconfig_hostname: String,
@@ -131,10 +129,6 @@ struct IndexTemplate<'a> {
     hash_as_json: String,
     #[serde(skip)]
     mmdb_date: &'a str,
-    #[serde(skip)]
-    host_string: String,
-    #[serde(skip)]
-    host_json: String,
 }
 
 const UNKNOWN: &str = "unknown";
@@ -199,11 +193,9 @@ async fn init_app(
     let _ = app.at("/host").all(host);
     let _ = app.at("/country_code").all(country_code);
     let _ = app.at("/ua").all(ua);
-    let _ = app.at("/port").all(port);
     let _ = app.at("/lang").all(lang);
     let _ = app.at("/encoding").all(encoding);
     let _ = app.at("/mime").all(mime);
-    let _ = app.at("/forwarded").all(forwarded);
     let _ = app.at("/all").all(all);
     let _ = app.at("/all.json").all(all_json);
 
@@ -212,7 +204,7 @@ async fn init_app(
 
 fn get_db(db_file: Option<String>) -> (DbIp<'static>, String) {
     match db_file {
-        Some(filename) => {
+        Some(filename) if !filename.is_empty() => {
             let reader = DbIp::External(Reader::open_readfile(&filename).expect("Geo IP filename"));
             let date = {
                 let re = Regex::new(r#"(\d{4}-\d{2})"#).expect("date regexp");
@@ -224,7 +216,8 @@ fn get_db(db_file: Option<String>) -> (DbIp<'static>, String) {
             };
             (reader, date)
         }
-        None => (
+        // None or no db-filename
+        _ => (
             DbIp::Inline(Reader::from_source(&*DB_IP).expect("geoip database")),
             MMDB_DATE.to_owned(),
         ),
@@ -257,45 +250,49 @@ fn main() -> Result<(), std::io::Error> {
     })
 }
 
-fn peer(remote: Option<&str>) -> (&str, &str) {
-    match remote {
-        None => (UNKNOWN, "0"),
-        Some(peer) => match peer.rsplit_once(':') {
-            None => (peer, "0"),
-            Some((peer, port)) => (
-                {
-                    let peer = peer.strip_prefix('[').unwrap_or(peer);
-                    let peer = peer.strip_suffix(']').unwrap_or(peer);
-                    peer.strip_prefix("::ffff:").unwrap_or(peer)
-                },
-                if port.is_empty() { "0" } else { port },
-            ),
+fn peer<'a>(req: &'a Request<State<'a>>) -> &str {
+    req.header("x-real-ip").map_or_else(
+        || {
+            req.peer_addr()
+                .map(|addr| {
+                    let addr = addr.rsplit_once(':').expect("ip address + port").0;
+                    match addr.split_once('[') {
+                        None => addr,
+                        Some(addr) => addr.1.rsplit_once(']').expect("ipv6 addr").0,
+                    }
+                })
+                .expect("peer address")
         },
-    }
+        |ip| ip.as_str(),
+    )
 }
 
-async fn resolve(resolver: &AsyncStdResolver, peer_addr: Option<&str>) -> Vec<String> {
-    match peer_addr {
-        None => vec![],
-        Some(addr) => {
-            let (addr, _port) = peer(Some(addr));
-            let addr = IpAddr::from_str(addr);
+async fn resolve(resolver: &AsyncStdResolver, req: &Request<State<'_>>) -> Option<String> {
+    let addr = peer(req);
+    if addr == UNKNOWN {
+        None
+    } else {
+        let addr_ip = IpAddr::from_str(addr);
 
-            match addr {
-                Err(_) => vec![],
-                Ok(addr) => match resolver.reverse_lookup(addr).await {
-                    Ok(resolved_hostnames) => resolved_hostnames
-                        .iter()
-                        .map(|name| {
-                            name.to_utf8()
-                                .strip_suffix('.')
-                                .expect("peer remote name")
-                                .to_owned()
-                        })
-                        .collect::<Vec<_>>(),
-                    Err(_) => vec![addr.to_string()],
-                },
+        if let Ok(addr_ip) = addr_ip {
+            if let Ok(resolved_hostnames) = resolver.reverse_lookup(addr_ip).await {
+                resolved_hostnames
+                    .iter()
+                    .take(1)
+                    .map(|name| {
+                        name.to_utf8()
+                            .strip_suffix('.')
+                            .expect("peer remote name")
+                            .to_owned()
+                    })
+                    .collect::<Vec<_>>()
+                    .get(0)
+                    .cloned()
+            } else {
+                Some(addr.to_owned())
             }
+        } else {
+            None
         }
     }
 }
@@ -313,7 +310,7 @@ async fn country<'a>(db_ip: &'a DbIp<'_>, peer: &str) -> &'a str {
 }
 
 async fn fill_struct<'a>(req: &'a Request<State<'a>>) -> IndexTemplate<'a> {
-    let (ip, port) = peer(req.remote());
+    let ip = peer(req);
 
     let ua = extract_header(req, headers::USER_AGENT);
 
@@ -330,22 +327,18 @@ async fn fill_struct<'a>(req: &'a Request<State<'a>>) -> IndexTemplate<'a> {
     };
 
     let country_code = country(db_ip, ip).await;
-    let host = resolve(resolver, req.remote()).await;
+    let host = resolve(resolver, req).await;
 
     IndexTemplate {
         ifconfig_hostname: hostname,
         ip,
-        host_string: host.join(", "),
-        host_json: convert_hostnames(&host),
-        host,
-        port: port.parse().expect("port number"),
+        host: host.unwrap_or_default(),
         ua,
         lang: extract_header(req, headers::ACCEPT_LANGUAGE),
         encoding: extract_header(req, headers::ACCEPT_ENCODING),
         method: req.method().to_string(),
         mime: extract_header(req, headers::ACCEPT),
         referer: extract_header(req, headers::REFERER),
-        forwarded: extract_header(req, "X-Forwarded-For"),
         country_code,
         hash_as_yaml: "".to_owned(),
         hash_as_json: "".to_owned(),
@@ -359,14 +352,6 @@ fn extract_header<'a>(
     header_name: impl Into<headers::HeaderName>,
 ) -> &'a str {
     req.header(header_name).map_or("", |v| v.as_str())
-}
-
-fn convert_hostnames(hostnames: &[String]) -> String {
-    match hostnames.len() {
-        0 => "".to_owned(),
-        1 => hostnames.get(0).expect("hostname").clone(),
-        _ => serde_json::to_string(&hostnames).expect("json hostname list"),
-    }
 }
 
 async fn index(req: Request<State<'_>>) -> tide::Result<Response> {
@@ -400,18 +385,18 @@ async fn index(req: Request<State<'_>>) -> tide::Result<Response> {
 }
 
 async fn ip(req: Request<State<'_>>) -> tide::Result<Response> {
-    let (ip, _port) = peer(req.remote());
+    let ip = peer(&req);
     Ok(ip.into())
 }
 
 async fn host(req: Request<State<'_>>) -> tide::Result<String> {
     let State { ref resolver, .. } = *req.state();
-    let hostnames = resolve(resolver, req.remote()).await;
-    Ok(convert_hostnames(&hostnames))
+    let hostnames = resolve(resolver, &req).await;
+    Ok(hostnames.unwrap_or_default())
 }
 
 async fn country_code(req: Request<State<'_>>) -> tide::Result<Response> {
-    let (ip, _port) = peer(req.remote());
+    let ip = peer(&req);
 
     let State {
         ref db_ip, db_date, ..
@@ -427,11 +412,6 @@ async fn ua(req: Request<State<'_>>) -> tide::Result<String> {
     Ok(extract_header(&req, headers::USER_AGENT).to_owned())
 }
 
-async fn port(req: Request<State<'_>>) -> tide::Result<String> {
-    let (_ip, port) = peer(req.remote());
-    Ok(port.to_owned())
-}
-
 async fn lang(req: Request<State<'_>>) -> tide::Result<String> {
     Ok(extract_header(&req, headers::ACCEPT_LANGUAGE).to_owned())
 }
@@ -442,10 +422,6 @@ async fn encoding(req: Request<State<'_>>) -> tide::Result<String> {
 
 async fn mime(req: Request<State<'_>>) -> tide::Result<String> {
     Ok(extract_header(&req, headers::ACCEPT).to_owned())
-}
-
-async fn forwarded(req: Request<State<'_>>) -> tide::Result<String> {
-    Ok(extract_header(&req, "X-Forwarded-For").to_owned())
 }
 
 async fn all(req: Request<State<'_>>) -> tide::Result<Response> {

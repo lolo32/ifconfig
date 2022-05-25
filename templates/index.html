@@ -30,16 +30,13 @@
             <div class="col-sm-3">IP Address</div><div class="col-sm-9"><%= ip %></div>
           </li>
           <li class="list-group-item">
-            <div class="col-sm-3">Remote Host</div><div class="col-sm-9"><%= host_string %></div>
+            <div class="col-sm-3">Remote Host</div><div class="col-sm-9"><%= host %></div>
           </li>
           <li class="list-group-item">
             <div class="col-sm-3">Country Code</div><div class="col-sm-9"><%= country_code %></div>
           </li>
           <li class="list-group-item">
             <div class="col-sm-3">User Agent</div><div class="col-sm-9"><%= ua %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-3">Port</div><div class="col-sm-9"><%= port %></div>
           </li>
           <li class="list-group-item">
             <div class="col-sm-3">Language</div><div class="col-sm-9"><%= lang %></div>
@@ -56,59 +53,154 @@
           <li class="list-group-item">
             <div class="col-sm-3">MIME Type</div><div class="col-sm-9"><%= mime %></div>
           </li>
-          <li class="list-group-item">
-            <div class="col-sm-3">X-Forwarded-For</div><div class="col-sm-9"><%= forwarded %></div>
-          </li>
         </ul>
+<body>
+  <header class="page-header container">
+    <a href="/" class="h1">
+      What is my ip address? - <small>
+        <%= ifconfig_hostname %>
+      </small>
+    </a>
+  </header>
+  <nav class="container"></nav>
+  <main class="container">
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <h4>Your Connection</h4>
       </div>
-      <div class="panel panel-default">
-        <div class="panel-heading">
-          <h4>Simple cURL API! </h4>
-        </div>
-        <ul class="list-group">
-          <li class="list-group-item">
-            <div class="col-sm-4">$ curl <%= ifconfig_hostname %></div><div class="col-sm-8"><%= ip %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/ip</div><div class="col-sm-8"><%= ip %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/host</div><div class="col-sm-8"><%= host_json %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/country_code</div><div class="col-sm-8"><%= country_code %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/ua</div><div class="col-sm-8"><%= ua %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/port</div><div class="col-sm-8"><%= port %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/lang</div><div class="col-sm-8"><%= lang %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/encoding</div><div class="col-sm-8"><%= encoding %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/mime</div><div class="col-sm-8"><%= mime %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/forwarded</div><div class="col-sm-8"><%= forwarded %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/all</div><div class="col-sm-8"><pre><%= hash_as_yaml %></pre></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/all.json</div><div class="col-sm-8"><%= hash_as_json %></div>
-          </li>
-        </ul>
+      <ul class="list-group">
+        <li class="list-group-item">
+          <div class="col-sm-3">IP Address</div>
+          <div class="col-sm-9">
+            <%= ip %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-3">Remote Host</div>
+          <div class="col-sm-9">
+            <%= host %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-3">Country Code</div>
+          <div class="col-sm-9">
+            <%= country_code %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-3">User Agent</div>
+          <div class="col-sm-9">
+            <%= ua %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-3">Language</div>
+          <div class="col-sm-9">
+            <%= lang %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-3">Referer</div>
+          <div class="col-sm-9">
+            <%= referer %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-3">Method</div>
+          <div class="col-sm-9">
+            <%= method %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-3">Encoding</div>
+          <div class="col-sm-9">
+            <%= encoding %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-3">MIME Type</div>
+          <div class="col-sm-9">
+            <%= mime %>
+          </div>
+        </li>
+      </ul>
+    </div>
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <h4>Simple cURL API! </h4>
       </div>
-    </main>
-    <footer class="container text-center">
-      <p><a href='https://db-ip.com'>IP Geolocation by DB-IP</a> &mdash; <em>(in date of <%= mmdb_date %>)</em></p>
-      <p>&copy; 2021-2022 ip.baysse.eu &mdash; <em>Based on <a href="https://github.com/georgyo/ifconfig.io">ifconfig.io</a></em></p>
-      <a class="github-fork-ribbon" href="https://github.com/lolo32/ifconfig.io/" title="Fork me on GitHub" data-ribbon="Fork me on GitHub">Fork me on GitHub</a>
-    </footer>
-  </body>
+      <ul class="list-group">
+        <li class="list-group-item">
+          <div class="col-sm-4">$ curl <%= ifconfig_hostname %>
+          </div>
+          <div class="col-sm-8">
+            <%= ip %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/ip</div>
+          <div class="col-sm-8">
+            <%= ip %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/host</div>
+          <div class="col-sm-8">
+            <%= host %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/country_code</div>
+          <div class="col-sm-8">
+            <%= country_code %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/ua</div>
+          <div class="col-sm-8">
+            <%= ua %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/lang</div>
+          <div class="col-sm-8">
+            <%= lang %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/encoding</div>
+          <div class="col-sm-8">
+            <%= encoding %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/mime</div>
+          <div class="col-sm-8">
+            <%= mime %>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/all</div>
+          <div class="col-sm-8 scroll">
+            <pre><%= hash_as_yaml %></pre>
+          </div>
+        </li>
+        <li class="list-group-item">
+          <div class="col-sm-4">$ curl <%= ifconfig_hostname %>/all.json</div>
+          <div class="col-sm-8 scroll">
+            <%= hash_as_json %>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </main>
+  <footer class="container text-center">
+    <p><a href='https://db-ip.com'>IP Geolocation by DB-IP</a> &mdash; <em>(in date of <%= mmdb_date %>)</em></p>
+    <p>&copy; 2021-2022 ip.baysse.eu &mdash; <em>Based on <a
+          href="https://github.com/georgyo/ifconfig.io">ifconfig.io</a></em></p>
+    <a class="github-fork-ribbon" href="https://github.com/lolo32/ifconfig.io/" title="Fork me on GitHub"
+      data-ribbon="Fork me on GitHub">Fork me on GitHub</a>
+  </footer>
+</body>
+
 </html>
