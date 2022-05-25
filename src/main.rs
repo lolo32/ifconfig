@@ -69,7 +69,6 @@ use std::{
 
 use async_std::task;
 use async_std_resolver::{resolver_from_system_conf, AsyncStdResolver};
-use include_flate::flate;
 use maxminddb::{geoip2, MaxMindDBError, Reader};
 use regex::Regex;
 use sailfish::TemplateOnce;
@@ -84,16 +83,16 @@ use tracing_subscriber::EnvFilter;
 #[cfg(test)]
 mod tests;
 
-flate!(static DB_IP: [u8] from "assets/dbip-country-lite-2022-03.mmdb");
+static DB_IP: &[u8] = include_bytes!("../assets/dbip-country-lite-2022-03.mmdb");
 const MMDB_DATE: &str = "2022-03";
 
-enum DbIp<'data> {
-    Inline(Reader<&'data Vec<u8>>),
+enum DbIp {
+    Inline(Reader<&'static [u8]>),
     External(Reader<Vec<u8>>),
 }
 
-impl<'data> DbIp<'data> {
-    fn lookup(&'data self, ip: IpAddr) -> Result<geoip2::Country<'data>, MaxMindDBError> {
+impl DbIp {
+    fn lookup(&self, ip: IpAddr) -> Result<geoip2::Country, MaxMindDBError> {
         match *self {
             Self::Inline(ref reader) => reader.lookup(ip),
             Self::External(ref reader) => reader.lookup(ip),
@@ -102,11 +101,11 @@ impl<'data> DbIp<'data> {
 }
 
 #[derive(Clone)]
-struct State<'data> {
+struct State {
     resolver: AsyncStdResolver,
     hostname: String,
-    db_ip: Arc<DbIp<'data>>,
-    db_date: &'data str,
+    db_ip: Arc<DbIp>,
+    db_date: &'static str,
 }
 
 #[derive(TemplateOnce, Serialize)]
@@ -161,11 +160,7 @@ fn string_to_static_str(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
 }
 
-async fn init_app(
-    hostname: String,
-    db_ip: Arc<DbIp<'static>>,
-    db_date: String,
-) -> Server<State<'_>> {
+async fn init_app(hostname: String, db_ip: Arc<DbIp>, db_date: String) -> Server<State> {
     let resolver = resolver_from_system_conf()
         .await
         .expect("resolver initialized");
@@ -203,7 +198,7 @@ async fn init_app(
     app
 }
 
-fn get_db(db_file: Option<String>) -> (DbIp<'static>, String) {
+fn get_db(db_file: Option<String>) -> (DbIp, String) {
     match db_file {
         Some(filename) if !filename.is_empty() => {
             let reader = DbIp::External(Reader::open_readfile(&filename).expect("Geo IP filename"));
@@ -219,7 +214,7 @@ fn get_db(db_file: Option<String>) -> (DbIp<'static>, String) {
         }
         // None or no db-filename
         _ => (
-            DbIp::Inline(Reader::from_source(&*DB_IP).expect("geoip database")),
+            DbIp::Inline(Reader::from_source(DB_IP).expect("geoip database")),
             MMDB_DATE.to_owned(),
         ),
     }
@@ -251,7 +246,7 @@ fn main() -> Result<(), std::io::Error> {
     })
 }
 
-fn peer<'a>(req: &'a Request<State<'a>>) -> &str {
+fn peer(req: &Request<State>) -> &str {
     req.header("x-real-ip").map_or_else(
         || {
             req.peer_addr()
@@ -268,7 +263,7 @@ fn peer<'a>(req: &'a Request<State<'a>>) -> &str {
     )
 }
 
-async fn resolve(resolver: &AsyncStdResolver, req: &Request<State<'_>>) -> Option<String> {
+async fn resolve(resolver: &AsyncStdResolver, req: &Request<State>) -> Option<String> {
     let addr = peer(req);
     if addr == UNKNOWN {
         None
@@ -298,7 +293,7 @@ async fn resolve(resolver: &AsyncStdResolver, req: &Request<State<'_>>) -> Optio
     }
 }
 
-async fn country<'a>(db_ip: &'a DbIp<'_>, peer: &str) -> &'a str {
+async fn country<'a>(db_ip: &'a DbIp, peer: &str) -> &'a str {
     match IpAddr::from_str(peer) {
         Err(_) => "",
         Ok(addr) => match db_ip.lookup(addr) {
@@ -310,7 +305,7 @@ async fn country<'a>(db_ip: &'a DbIp<'_>, peer: &str) -> &'a str {
     }
 }
 
-async fn fill_struct<'a>(req: &'a Request<State<'a>>) -> IndexTemplate<'a> {
+async fn fill_struct(req: &Request<State>) -> IndexTemplate<'_> {
     let ip = peer(req);
 
     let ua = extract_header(req, headers::USER_AGENT);
@@ -348,14 +343,11 @@ async fn fill_struct<'a>(req: &'a Request<State<'a>>) -> IndexTemplate<'a> {
 }
 
 #[inline]
-fn extract_header<'a>(
-    req: &'a Request<State<'_>>,
-    header_name: impl Into<headers::HeaderName>,
-) -> &'a str {
+fn extract_header(req: &Request<State>, header_name: impl Into<headers::HeaderName>) -> &'_ str {
     req.header(header_name).map_or("", |v| v.as_str())
 }
 
-async fn index(req: Request<State<'_>>) -> tide::Result<Response> {
+async fn index(req: Request<State>) -> tide::Result<Response> {
     let ua = extract_header(&req, headers::USER_AGENT);
     let ua = match ua {
         "" => ("", ""),
@@ -385,18 +377,18 @@ async fn index(req: Request<State<'_>>) -> tide::Result<Response> {
         .build())
 }
 
-async fn ip(req: Request<State<'_>>) -> tide::Result<Response> {
+async fn ip(req: Request<State>) -> tide::Result<Response> {
     let ip = peer(&req);
     Ok(ip.into())
 }
 
-async fn host(req: Request<State<'_>>) -> tide::Result<String> {
+async fn host(req: Request<State>) -> tide::Result<String> {
     let State { ref resolver, .. } = *req.state();
     let hostnames = resolve(resolver, &req).await;
     Ok(hostnames.unwrap_or_default())
 }
 
-async fn country_code(req: Request<State<'_>>) -> tide::Result<Response> {
+async fn country_code(req: Request<State>) -> tide::Result<Response> {
     let ip = peer(&req);
 
     let State {
@@ -409,23 +401,23 @@ async fn country_code(req: Request<State<'_>>) -> tide::Result<Response> {
         .build())
 }
 
-async fn ua(req: Request<State<'_>>) -> tide::Result<String> {
+async fn ua(req: Request<State>) -> tide::Result<String> {
     Ok(extract_header(&req, headers::USER_AGENT).to_owned())
 }
 
-async fn lang(req: Request<State<'_>>) -> tide::Result<String> {
+async fn lang(req: Request<State>) -> tide::Result<String> {
     Ok(extract_header(&req, headers::ACCEPT_LANGUAGE).to_owned())
 }
 
-async fn encoding(req: Request<State<'_>>) -> tide::Result<String> {
+async fn encoding(req: Request<State>) -> tide::Result<String> {
     Ok(extract_header(&req, headers::ACCEPT_ENCODING).to_owned())
 }
 
-async fn mime(req: Request<State<'_>>) -> tide::Result<String> {
+async fn mime(req: Request<State>) -> tide::Result<String> {
     Ok(extract_header(&req, headers::ACCEPT).to_owned())
 }
 
-async fn all(req: Request<State<'_>>) -> tide::Result<Response> {
+async fn all(req: Request<State>) -> tide::Result<Response> {
     let State { db_date, .. } = *req.state();
     Ok(Response::builder(200)
         .content_type("application/yaml")
@@ -435,7 +427,7 @@ async fn all(req: Request<State<'_>>) -> tide::Result<Response> {
         .build())
 }
 
-async fn all_json(req: Request<State<'_>>) -> tide::Result<Response> {
+async fn all_json(req: Request<State>) -> tide::Result<Response> {
     let State { db_date, .. } = *req.state();
     Ok(Response::builder(200)
         .content_type(mime::JSON)
@@ -446,6 +438,6 @@ async fn all_json(req: Request<State<'_>>) -> tide::Result<Response> {
 }
 
 #[inline]
-async fn health(_req: Request<State<'_>>) -> tide::Result<String> {
+async fn health(_req: Request<State>) -> tide::Result<String> {
     Ok("UP".to_owned())
 }

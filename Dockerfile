@@ -1,5 +1,5 @@
 # select build image
-FROM lolo32/rust-nightly as build
+FROM rust:alpine as build
 
 # install gcc related stuff
 RUN apk add --no-cache alpine-sdk protoc

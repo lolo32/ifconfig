@@ -15,10 +15,6 @@ version = "0.21"
 [dependencies.dotenv]
 version = "0.15"
 
-[dependencies.include-flate]
-version = "0.1"
-default-features = false
-
 [dependencies.maxminddb]
 version = "0.23"
 
