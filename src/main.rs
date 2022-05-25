@@ -198,6 +198,7 @@ async fn init_app(
     let _ = app.at("/mime").all(mime);
     let _ = app.at("/all").all(all);
     let _ = app.at("/all.json").all(all_json);
+    let _ = app.at("/health").get(health);
 
     app
 }
@@ -442,4 +443,9 @@ async fn all_json(req: Request<State<'_>>) -> tide::Result<Response> {
         .header("X-IP-Geolocation-Date", db_date)
         .body(serde_json::to_string(&fill_struct(&req).await)?)
         .build())
+}
+
+#[inline]
+async fn health(_req: Request<State<'_>>) -> tide::Result<String> {
+    Ok("UP".to_owned())
 }
