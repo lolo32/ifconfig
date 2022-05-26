@@ -17,7 +17,7 @@ const PEER_ADDR: &str = "93.184.216.34";
 const PEER_ADDR_GOOGLE_CO_UK: &str = "216.58.213.67";
 const PEER_PORT: &str = "65500";
 
-async fn gen_test_app(hostname: Option<&str>) -> Server<State<'static>> {
+async fn gen_test_app(hostname: Option<&str>) -> Server<State> {
     let (db_ip, db_date) = get_db(None);
     init_app(
         hostname.unwrap_or("test.localhost").to_owned(),
@@ -85,16 +85,6 @@ async fn test_ua() {
     let body = response.body_string().await.expect("body received");
 
     assert_eq!(&body, UA_VALUE);
-}
-
-#[async_std::test]
-async fn test_port() {
-    let mut response = get_response(None, "/port").await;
-    assert_eq!(response.status(), StatusCode::Ok);
-
-    let body = response.body_string().await.expect("body received");
-
-    assert_eq!(&body, PEER_PORT);
 }
 
 #[async_std::test]
@@ -179,23 +169,7 @@ async fn test_ip() {
         // From Forwarded header, GB instead of US
         let mut request = gen_request("/ip").await;
         request.set_peer_addr(Some(format!("{}:{}", PEER_ADDR, PEER_PORT)));
-        let _none_value = request.insert_header(
-            headers::FORWARDED,
-            format!("for={}:64000", PEER_ADDR_GOOGLE_CO_UK),
-        );
-
-        let mut response: http::Response = app.respond(request).await.expect("request handled");
-        assert_eq!(response.status(), StatusCode::Ok);
-
-        let body = response.body_string().await.expect("body received");
-
-        assert_eq!(&body, PEER_ADDR_GOOGLE_CO_UK);
-    }
-    {
-        // From X-Forwarded-For header, GB instead of US
-        let mut request = gen_request("/ip").await;
-        request.set_peer_addr(Some(format!("{}:{}", PEER_ADDR, PEER_PORT)));
-        let _none_value = request.insert_header("X-Forwarded-For", PEER_ADDR_GOOGLE_CO_UK);
+        let _none_value = request.insert_header("X-Real-Ip", PEER_ADDR_GOOGLE_CO_UK);
 
         let mut response: http::Response = app.respond(request).await.expect("request handled");
         assert_eq!(response.status(), StatusCode::Ok);
@@ -254,16 +228,13 @@ async fn test_all_yaml() {
         &body,
         r#"---
 ip: 93.184.216.34
-host:
-  - 93.184.216.34
-port: 65500
+host: 93.184.216.34
 ua: "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:98.0) Gecko/20100101 Firefox/98.0"
 lang: fr_FR; en_US
 encoding: "gzip, deflate, br"
 method: GET
 mime: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
 referer: ""
-forwarded: ""
 country_code: US
 "#
     );
@@ -286,7 +257,7 @@ async fn test_all_json() {
 
     assert_eq!(
         &body,
-        r#"{"ip":"93.184.216.34","host":["93.184.216.34"],"port":65500,"ua":"User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:98.0) Gecko/20100101 Firefox/98.0","lang":"fr_FR; en_US","encoding":"gzip, deflate, br","method":"GET","mime":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8","referer":"","forwarded":"","country_code":"US"}"#
+        r#"{"ip":"93.184.216.34","host":"93.184.216.34","ua":"User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:98.0) Gecko/20100101 Firefox/98.0","lang":"fr_FR; en_US","encoding":"gzip, deflate, br","method":"GET","mime":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8","referer":"","country_code":"US"}"#
     );
 }
 
