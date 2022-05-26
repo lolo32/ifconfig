@@ -1,6 +1,7 @@
 use std::net::Ipv4Addr;
 
 use async_std::path::Path;
+use pretty_assertions::assert_eq;
 use tide::{
     http::{self, Method, Url},
     StatusCode,

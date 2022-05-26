@@ -63,6 +63,9 @@ features = [
     "attributes"
 ]
 
+[dev-dependencies.pretty_assertions]
+version = "1"
+
 [profile.release]
 opt-level = 3
 debug = false
