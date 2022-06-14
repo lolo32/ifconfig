@@ -17,6 +17,7 @@ const UA_VALUE:&str="User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; r
 const PEER_ADDR: &str = "93.184.216.34";
 const PEER_ADDR_GOOGLE_CO_UK: &str = "216.58.213.67";
 const PEER_PORT: &str = "65500";
+const MMDB_DATE: &str = "2022-03";
 
 async fn gen_test_app(hostname: Option<&str>) -> Server<State> {
     let (db_ip, db_date) = get_db(None);
@@ -185,18 +186,6 @@ async fn test_ip() {
 async fn test_host() {
     let app = gen_test_app(None).await;
     {
-        // With Google.co.uk
-        let mut request = gen_request("/host").await;
-        request.set_peer_addr(Some(format!("188.165.47.122:{}", PEER_PORT)));
-
-        let mut response: http::Response = app.respond(request).await.expect("request handled");
-        assert_eq!(response.status(), StatusCode::Ok);
-
-        let body = response.body_string().await.expect("body received");
-
-        assert_eq!(&body, "mx1.ovh.net");
-    }
-    {
         // With no country IP (localhost)
         let mut request = gen_request("/host").await;
         request.set_peer_addr(Some(format!("127.0.0.1:{}", PEER_PORT)));
@@ -207,6 +196,18 @@ async fn test_host() {
         let body = response.body_string().await.expect("body received");
 
         assert_eq!(&body, "localhost");
+    }
+    {
+        // With Google.co.uk
+        let mut request = gen_request("/host").await;
+        request.set_peer_addr(Some(format!("1.1.1.1:{}", PEER_PORT)));
+
+        let mut response: http::Response = app.respond(request).await.expect("request handled");
+        assert_eq!(response.status(), StatusCode::Ok);
+
+        let body = response.body_string().await.expect("body received");
+
+        assert_eq!(&body, "one.one.one.one");
     }
 }
 

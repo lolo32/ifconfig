@@ -60,6 +60,7 @@
 )]
 
 use std::{
+    convert::TryInto,
     env,
     net::{IpAddr, ToSocketAddrs},
     str::FromStr,
@@ -68,9 +69,9 @@ use std::{
 };
 
 use async_std::task;
-use async_std_resolver::{resolver_from_system_conf, AsyncStdResolver};
-use maxminddb::{geoip2, MaxMindDBError, Reader};
-use regex::Regex;
+use chrono::{DateTime, NaiveDateTime, Utc};
+// use dnsclient::r#async::DNSClient;
+use maxminddb::{geoip2, MaxMindDBError, Metadata, Reader};
 use sailfish::TemplateOnce;
 use serde::Serialize;
 use tide::{
@@ -80,11 +81,13 @@ use tide::{
 };
 use tracing_subscriber::EnvFilter;
 
+use crate::dns::{client::Resolver, message::Message};
+
+mod dns;
 #[cfg(test)]
 mod tests;
 
 static DB_IP: &[u8] = include_bytes!("../assets/dbip-country-lite-2022-03.mmdb");
-const MMDB_DATE: &str = "2022-03";
 
 enum DbIp {
     Inline(Reader<&'static [u8]>),
@@ -98,11 +101,18 @@ impl DbIp {
             Self::External(ref reader) => reader.lookup(ip),
         }
     }
+
+    const fn metadata(&self) -> &Metadata {
+        match *self {
+            Self::Inline(ref reader) => &reader.metadata,
+            Self::External(ref reader) => &reader.metadata,
+        }
+    }
 }
 
 #[derive(Clone)]
 struct State {
-    resolver: AsyncStdResolver,
+    resolver: Resolver,
     hostname: String,
     db_ip: Arc<DbIp>,
     db_date: &'static str,
@@ -161,9 +171,7 @@ fn string_to_static_str(s: String) -> &'static str {
 }
 
 async fn init_app(hostname: String, db_ip: Arc<DbIp>, db_date: String) -> Server<State> {
-    let resolver = resolver_from_system_conf()
-        .await
-        .expect("resolver initialized");
+    let resolver = Resolver::new().expect("resolver initialized");
 
     let state = State {
         resolver,
@@ -199,25 +207,27 @@ async fn init_app(hostname: String, db_ip: Arc<DbIp>, db_date: String) -> Server
 }
 
 fn get_db(db_file: Option<String>) -> (DbIp, String) {
-    match db_file {
+    let reader = match db_file {
         Some(filename) if !filename.is_empty() => {
-            let reader = DbIp::External(Reader::open_readfile(&filename).expect("Geo IP filename"));
-            let date = {
-                let re = Regex::new(r#"(\d{4}-\d{2})"#).expect("date regexp");
-                let caps = re.captures(&filename);
-                match caps {
-                    Some(caps) => caps.get(1).expect("date").as_str().to_owned(),
-                    None => UNKNOWN.to_owned(),
-                }
-            };
-            (reader, date)
+            DbIp::External(Reader::open_readfile(&filename).expect("Geo IP filename"))
         }
         // None or no db-filename
-        _ => (
-            DbIp::Inline(Reader::from_source(DB_IP).expect("geoip database")),
-            MMDB_DATE.to_owned(),
+        _ => DbIp::Inline(Reader::from_source(DB_IP).expect("geoip database")),
+    };
+
+    let date: DateTime<Utc> = DateTime::from_utc(
+        NaiveDateTime::from_timestamp(
+            reader
+                .metadata()
+                .build_epoch
+                .try_into()
+                .expect("db_ip epoch too big"),
+            0,
         ),
-    }
+        Utc,
+    );
+
+    (reader, date.format("%Y-%m").to_string())
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -263,7 +273,7 @@ fn peer(req: &Request<State>) -> &str {
     )
 }
 
-async fn resolve(resolver: &AsyncStdResolver, req: &Request<State>) -> Option<String> {
+async fn resolve(resolver: &Resolver, req: &Request<State>) -> Option<String> {
     let addr = peer(req);
     if addr == UNKNOWN {
         None
@@ -271,21 +281,18 @@ async fn resolve(resolver: &AsyncStdResolver, req: &Request<State>) -> Option<St
         let addr_ip = IpAddr::from_str(addr);
 
         if let Ok(addr_ip) = addr_ip {
-            if let Ok(resolved_hostnames) = resolver.reverse_lookup(addr_ip).await {
-                resolved_hostnames
-                    .iter()
-                    .take(1)
-                    .map(|name| {
-                        name.to_utf8()
-                            .strip_suffix('.')
-                            .expect("peer remote name")
-                            .to_owned()
-                    })
-                    .collect::<Vec<_>>()
-                    .get(0)
-                    .cloned()
+            let id = 1;
+            let message = Message::new(addr_ip, id);
+            let dns_response = resolver.send(&message.pack()).await;
+            println!("{:x?}", dns_response);
+            if let Ok(response) = dns_response {
+                let host = message.unpack(&response);
+                match host {
+                    Ok(hostname) => hostname.1,
+                    Err(_) => None,
+                }
             } else {
-                Some(addr.to_owned())
+                None
             }
         } else {
             None
@@ -384,8 +391,8 @@ async fn ip(req: Request<State>) -> tide::Result<Response> {
 
 async fn host(req: Request<State>) -> tide::Result<String> {
     let State { ref resolver, .. } = *req.state();
-    let hostnames = resolve(resolver, &req).await;
-    Ok(hostnames.unwrap_or_default())
+    let hostname = resolve(resolver, &req).await;
+    Ok(hostname.unwrap_or_default())
 }
 
 async fn country_code(req: Request<State>) -> tide::Result<Response> {
