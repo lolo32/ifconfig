@@ -1,5 +1,6 @@
 {
-    "rust-analyzer.server.extraEnv": {
-        "RUSTFLAGS": "-C instrument-coverage"
-    }
+  "rust-analyzer.server.extraEnv": {
+    "_RUSTFLAGS": "-C instrument-coverage"
+  },
+  "cSpell.enabled": false
 }
