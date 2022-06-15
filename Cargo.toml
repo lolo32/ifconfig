@@ -12,18 +12,18 @@ default-features = false
 [dependencies.async-std-resolver]
 version = "0.21"
 
+[dependencies.chrono]
+version = "0.4"
+default-features = false
+features = [
+    "std"
+]
+
 [dependencies.dotenv]
 version = "0.15"
 
 [dependencies.maxminddb]
 version = "0.23"
-
-[dependencies.regex]
-version = "1"
-default-features = false
-features = [
-    "std"
-]
 
 [dependencies.sailfish]
 version = "0.4"

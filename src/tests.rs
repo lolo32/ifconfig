@@ -17,6 +17,7 @@ const UA_VALUE:&str="User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; r
 const PEER_ADDR: &str = "93.184.216.34";
 const PEER_ADDR_GOOGLE_CO_UK: &str = "216.58.213.67";
 const PEER_PORT: &str = "65500";
+const MMDB_DATE: &str = "2022-03";
 
 async fn gen_test_app(hostname: Option<&str>) -> Server<State> {
     let (db_ip, db_date) = get_db(None);

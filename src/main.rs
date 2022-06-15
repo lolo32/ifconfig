@@ -60,6 +60,7 @@
 )]
 
 use std::{
+    convert::TryInto,
     env,
     net::{IpAddr, ToSocketAddrs},
     str::FromStr,
@@ -69,8 +70,8 @@ use std::{
 
 use async_std::task;
 use async_std_resolver::{resolver_from_system_conf, AsyncStdResolver};
-use maxminddb::{geoip2, MaxMindDBError, Reader};
-use regex::Regex;
+use chrono::{DateTime, NaiveDateTime, Utc};
+use maxminddb::{geoip2, MaxMindDBError, Metadata, Reader};
 use sailfish::TemplateOnce;
 use serde::Serialize;
 use tide::{
@@ -84,7 +85,6 @@ use tracing_subscriber::EnvFilter;
 mod tests;
 
 static DB_IP: &[u8] = include_bytes!("../assets/dbip-country-lite-2022-03.mmdb");
-const MMDB_DATE: &str = "2022-03";
 
 enum DbIp {
     Inline(Reader<&'static [u8]>),
@@ -96,6 +96,13 @@ impl DbIp {
         match *self {
             Self::Inline(ref reader) => reader.lookup(ip),
             Self::External(ref reader) => reader.lookup(ip),
+        }
+    }
+
+    const fn metadata(&self) -> &Metadata {
+        match *self {
+            Self::Inline(ref reader) => &reader.metadata,
+            Self::External(ref reader) => &reader.metadata,
         }
     }
 }
@@ -199,25 +206,27 @@ async fn init_app(hostname: String, db_ip: Arc<DbIp>, db_date: String) -> Server
 }
 
 fn get_db(db_file: Option<String>) -> (DbIp, String) {
-    match db_file {
+    let reader = match db_file {
         Some(filename) if !filename.is_empty() => {
-            let reader = DbIp::External(Reader::open_readfile(&filename).expect("Geo IP filename"));
-            let date = {
-                let re = Regex::new(r#"(\d{4}-\d{2})"#).expect("date regexp");
-                let caps = re.captures(&filename);
-                match caps {
-                    Some(caps) => caps.get(1).expect("date").as_str().to_owned(),
-                    None => UNKNOWN.to_owned(),
-                }
-            };
-            (reader, date)
+            DbIp::External(Reader::open_readfile(&filename).expect("Geo IP filename"))
         }
         // None or no db-filename
-        _ => (
-            DbIp::Inline(Reader::from_source(DB_IP).expect("geoip database")),
-            MMDB_DATE.to_owned(),
+        _ => DbIp::Inline(Reader::from_source(DB_IP).expect("geoip database")),
+    };
+
+    let date: DateTime<Utc> = DateTime::from_utc(
+        NaiveDateTime::from_timestamp(
+            reader
+                .metadata()
+                .build_epoch
+                .try_into()
+                .expect("db_ip epoch too big"),
+            0,
         ),
-    }
+        Utc,
+    );
+
+    (reader, date.format("%Y-%m").to_string())
 }
 
 fn main() -> Result<(), std::io::Error> {
