@@ -2,7 +2,7 @@
 FROM rust:alpine as build
 
 # install gcc related stuff
-RUN apk add --no-cache alpine-sdk protoc
+RUN apk add --no-cache build-base protoc
 
 # create a new empty shell project
 RUN \
@@ -14,8 +14,8 @@ WORKDIR /app
 RUN cargo build --release
 
 # copy over your manifests
-COPY ./Cargo.lock ./Cargo.lock
 COPY ./Cargo.toml ./Cargo.toml
+COPY ./Cargo.lock ./Cargo.lock
 
 # this build step will cache your dependencies
 RUN cargo build --release
