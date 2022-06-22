@@ -56,13 +56,6 @@ features = [
     "env-filter"
 ]
 
-[dev-dependencies.async-std]
-version = "1"
-default-features = false
-features = [
-    "attributes"
-]
-
 [dev-dependencies.pretty_assertions]
 version = "1"
 
