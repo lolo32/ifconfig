@@ -75,7 +75,7 @@ use maxminddb::{geoip2, MaxMindDBError, Metadata, Reader};
 use sailfish::TemplateOnce;
 use serde::Serialize;
 use tide::{
-    http::{headers, mime},
+    http::{headers, mime, Method},
     utils::After,
     Middleware, Next, Request, Response, Server,
 };
@@ -141,25 +141,31 @@ const UNKNOWN: &str = "unknown";
 
 #[derive(Debug, Copy, Clone)]
 pub struct MyLogger;
+
 #[tide::utils::async_trait]
 impl<State> Middleware<State> for MyLogger
 where
     State: Clone + Send + Sync + 'static,
 {
     async fn handle(&self, request: Request<State>, next: Next<'_, State>) -> tide::Result {
-        let now = Instant::now();
-        let path = request.url().path().to_owned();
-        let method = request.method().to_string();
-        let response = next.run(request).await;
-        let status = response.status();
-        let duration = now.elapsed();
-        tracing::info!(
-            method = method.as_str(),
-            path = path.as_str(),
-            status = status.to_string().as_str(),
-            duration = format!("{:?}", duration).as_str(),
-        );
-        Ok(response)
+        Ok(match (request.method(), request.url().path()) {
+            (Method::Get, "/health") => next.run(request).await,
+            (method, path) => {
+                let now = Instant::now();
+                let path = path.to_owned();
+                let method = method.to_string();
+                let response = next.run(request).await;
+                let status = response.status();
+                let duration = now.elapsed();
+                tracing::info!(
+                    method = method.as_str(),
+                    path = path.as_str(),
+                    status = status.to_string().as_str(),
+                    duration = format!("{:?}", duration).as_str(),
+                );
+                response
+            }
+        })
     }
 }
 
