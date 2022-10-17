@@ -84,7 +84,7 @@ use tracing_subscriber::EnvFilter;
 #[cfg(test)]
 mod tests;
 
-static DB_IP: &[u8] = include_bytes!("../assets/dbip-country-lite-2022-03.mmdb");
+static DB_IP: &[u8] = include_bytes!("../assets/dbip-country-lite-2022-10.mmdb");
 
 enum DbIp {
     Inline(Reader<&'static [u8]>),
