@@ -13,53 +13,10 @@
     </style>
     <title><%= ifconfig_hostname %></title>
   </head>
-  <body>
-    <header class="page-header container">
-      <a href="/" class="h1">
-        What is my ip address? - <small><%= ifconfig_hostname %></small>
-      </a>
-    </header>
-    <nav class="container"></nav>
-    <main class="container">
-      <div class="panel panel-default">
-        <div class="panel-heading">
-          <h4>Your Connection</h4>
-        </div>
-        <ul class="list-group">
-          <li class="list-group-item">
-            <div class="col-sm-3">IP Address</div><div class="col-sm-9"><%= ip %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-3">Remote Host</div><div class="col-sm-9"><%= host %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-3">Country Code</div><div class="col-sm-9"><%= country_code %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-3">User Agent</div><div class="col-sm-9"><%= ua %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-3">Language</div><div class="col-sm-9"><%= lang %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-3">Referer</div><div class="col-sm-9"><%= referer %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-3">Method</div><div class="col-sm-9"><%= method %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-3">Encoding</div><div class="col-sm-9"><%= encoding %></div>
-          </li>
-          <li class="list-group-item">
-            <div class="col-sm-3">MIME Type</div><div class="col-sm-9"><%= mime %></div>
-          </li>
-        </ul>
 <body>
   <header class="page-header container">
     <a href="/" class="h1">
-      What is my ip address? - <small>
-        <%= ifconfig_hostname %>
-      </small>
+      What is my ip address? - <small><%= ifconfig_hostname %></small>
     </a>
   </header>
   <nav class="container"></nav>
@@ -70,58 +27,31 @@
       </div>
       <ul class="list-group">
         <li class="list-group-item">
-          <div class="col-sm-3">IP Address</div>
-          <div class="col-sm-9">
-            <%= ip %>
-          </div>
+          <div class="col-sm-3">IP Address</div><div class="col-sm-9"><%= ip %></div>
         </li>
         <li class="list-group-item">
-          <div class="col-sm-3">Remote Host</div>
-          <div class="col-sm-9">
-            <%= host %>
-          </div>
+          <div class="col-sm-3">Remote Host</div><div class="col-sm-9"><%= host %></div>
         </li>
         <li class="list-group-item">
-          <div class="col-sm-3">Country Code</div>
-          <div class="col-sm-9">
-            <%= country_code %>
-          </div>
+          <div class="col-sm-3">Country Code</div><div class="col-sm-9"><%= country_code %></div>
         </li>
         <li class="list-group-item">
-          <div class="col-sm-3">User Agent</div>
-          <div class="col-sm-9">
-            <%= ua %>
-          </div>
+          <div class="col-sm-3">User Agent</div><div class="col-sm-9"><%= ua %></div>
         </li>
         <li class="list-group-item">
-          <div class="col-sm-3">Language</div>
-          <div class="col-sm-9">
-            <%= lang %>
-          </div>
+          <div class="col-sm-3">Language</div><div class="col-sm-9"><%= lang %></div>
         </li>
         <li class="list-group-item">
-          <div class="col-sm-3">Referer</div>
-          <div class="col-sm-9">
-            <%= referer %>
-          </div>
+          <div class="col-sm-3">Referer</div><div class="col-sm-9"><%= referer %></div>
         </li>
         <li class="list-group-item">
-          <div class="col-sm-3">Method</div>
-          <div class="col-sm-9">
-            <%= method %>
-          </div>
+          <div class="col-sm-3">Method</div><div class="col-sm-9"><%= method %></div>
         </li>
         <li class="list-group-item">
-          <div class="col-sm-3">Encoding</div>
-          <div class="col-sm-9">
-            <%= encoding %>
-          </div>
+          <div class="col-sm-3">Encoding</div><div class="col-sm-9"><%= encoding %></div>
         </li>
         <li class="list-group-item">
-          <div class="col-sm-3">MIME Type</div>
-          <div class="col-sm-9">
-            <%= mime %>
-          </div>
+          <div class="col-sm-3">MIME Type</div><div class="col-sm-9"><%= mime %></div>
         </li>
       </ul>
     </div>

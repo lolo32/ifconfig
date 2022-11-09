@@ -1,11 +1,9 @@
-use std::net::Ipv4Addr;
+use std::{net::Ipv4Addr, path::Path};
 
-use async_std::path::Path;
+use axum::{http, RouterService};
+use hyper::Body;
 use pretty_assertions::assert_eq;
-use tide::{
-    http::{self, Method, Url},
-    StatusCode,
-};
+use tower::Service;
 
 use super::*;
 
@@ -15,342 +13,486 @@ const ACCEPT_VALUE: &str =
 const ENCODING_VALUE: &str = "gzip, deflate, br";
 const UA_VALUE:&str="User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:98.0) Gecko/20100101 Firefox/98.0";
 const PEER_ADDR: &str = "93.184.216.34";
-const PEER_ADDR_GOOGLE_CO_UK: &str = "216.58.213.67";
-const PEER_PORT: &str = "65500";
-const MMDB_DATE: &str = "2022-03";
+const PEER_ADDR_ELYSEE_FR: &str = "185.194.81.29";
+const MMDB_DATE: &str = "2022-11";
 
-async fn gen_test_app(hostname: Option<&str>) -> Server<State> {
+fn gen_test_app(hostname: Option<&str>) -> RouterService {
     let (db_ip, db_date) = get_db(None);
     init_app(
         hostname.unwrap_or("test.localhost").to_owned(),
         Arc::new(db_ip),
         db_date,
     )
-    .await
+    .into_service()
 }
 
-async fn gen_request(dest: &str) -> http::Request {
-    let mut request = http::Request::new(
-        Method::Get,
-        Url::parse(&format!("http://test.localhost{}", dest)).expect("url"),
-    );
-    request.set_peer_addr(Some(format!("{}:{}", PEER_ADDR, PEER_PORT)));
-    let _none = request.insert_header(headers::HOST, "test.localhost");
-    let _none = request.insert_header(headers::ACCEPT_LANGUAGE, LOCALES);
-    let _none = request.insert_header(headers::ACCEPT, ACCEPT_VALUE);
-    let _none = request.insert_header(headers::ACCEPT_ENCODING, ENCODING_VALUE);
-    let _none = request.insert_header(headers::USER_AGENT, UA_VALUE);
-    request
-}
-
-async fn get_response(hostname: Option<&str>, dest: &str) -> http::Response {
-    let request = gen_request(dest).await;
-    let app = gen_test_app(hostname).await;
-    app.respond(request).await.expect("request handled")
+async fn gen_request(dest: &str) -> http::Request<Body> {
+    http::Request::builder()
+        .method(Method::GET)
+        .uri(format!("http://test.localhost{dest}"))
+        .header(header::HOST, "test.localhost")
+        .header(header::ACCEPT_LANGUAGE, LOCALES)
+        .header(header::ACCEPT, ACCEPT_VALUE)
+        .header(header::ACCEPT_ENCODING, ENCODING_VALUE)
+        .header(header::USER_AGENT, UA_VALUE)
+        .header("x-real-ip", PEER_ADDR)
+        .body(Body::empty())
+        .expect("request")
+    // request.set_peer_addr(Some(format!("{}:{}", PEER_ADDR, PEER_PORT)));
 }
 
 #[test]
 fn test_lang() {
-    async_std::task::block_on(async {
-        let mut response = get_response(None, "/lang").await;
-        assert_eq!(response.status(), StatusCode::Ok);
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(async {
+            let mut app = gen_test_app(None);
+            let request = gen_request("/lang").await;
+            let response = app.call(request).await.expect("request handled");
 
-        let body = response.body_string().await.expect("body received");
+            assert_eq!(response.status(), StatusCode::OK);
 
-        assert_eq!(&body, LOCALES);
-    });
+            let body = hyper::body::to_bytes(response.into_body())
+                .await
+                .expect("Body received");
+
+            assert_eq!(&body[..], LOCALES.as_bytes());
+        });
 }
 
 #[test]
 fn test_mime() {
-    async_std::task::block_on(async {
-        let mut response = get_response(None, "/mime").await;
-        assert_eq!(response.status(), StatusCode::Ok);
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(async {
+            let mut app = gen_test_app(None);
+            let request = gen_request("/mime").await;
+            let response = app.call(request).await.expect("request handled");
 
-        let body = response.body_string().await.expect("body received");
+            assert_eq!(response.status(), StatusCode::OK);
 
-        assert_eq!(&body, ACCEPT_VALUE);
-    });
+            let body = hyper::body::to_bytes(response.into_body())
+                .await
+                .expect("body received");
+
+            assert_eq!(&body, ACCEPT_VALUE);
+        });
 }
 
 #[test]
 fn test_encoding() {
-    async_std::task::block_on(async {
-        let mut response = get_response(None, "/encoding").await;
-        assert_eq!(response.status(), StatusCode::Ok);
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(async {
+            let mut app = gen_test_app(None);
+            let request = gen_request("/encoding").await;
+            let response = app.call(request).await.expect("request handled");
 
-        let body = response.body_string().await.expect("body received");
+            assert_eq!(response.status(), StatusCode::OK);
 
-        assert_eq!(&body, ENCODING_VALUE);
-    });
+            let body = hyper::body::to_bytes(response.into_body())
+                .await
+                .expect("body received");
+
+            assert_eq!(&body, ENCODING_VALUE);
+        });
 }
 
 #[test]
 fn test_ua() {
-    async_std::task::block_on(async {
-        let mut response = get_response(None, "/ua").await;
-        assert_eq!(response.status(), StatusCode::Ok);
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(async {
+            let mut app = gen_test_app(None);
+            let request = gen_request("/ua").await;
+            let response = app.call(request).await.expect("request handled");
 
-        let body = response.body_string().await.expect("body received");
+            assert_eq!(response.status(), StatusCode::OK);
 
-        assert_eq!(&body, UA_VALUE);
-    });
+            let body = hyper::body::to_bytes(response.into_body())
+                .await
+                .expect("body received");
+
+            assert_eq!(&body, UA_VALUE);
+        });
 }
 
 #[test]
 fn test_country_code() {
-    async_std::task::block_on(async {
-        {
-            // With standard process + example.org
-            let mut response = get_response(None, "/country_code").await;
-            assert_eq!(response.status(), StatusCode::Ok);
-            assert_eq!(
-                response.header("X-IP-Geolocation-By").map(|v| v.as_str()),
-                Some("https://db-ip.com/")
-            );
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(async {
+            let mut app = gen_test_app(None);
+            {
+                // With standard process + example.org
+                let request = gen_request("/country_code").await;
+                let response = app.call(request).await.expect("request handled");
 
-            let body = response.body_string().await.expect("body received");
+                assert_eq!(response.status(), StatusCode::OK);
+                assert_eq!(
+                    response
+                        .headers()
+                        .get("X-IP-Geolocation-By")
+                        .map(|v| v.to_str().expect("header value")),
+                    Some("https://db-ip.com/")
+                );
 
-            assert_eq!(&body, "US");
-        }
-        let app = gen_test_app(None).await;
-        {
-            // With IP of Google.co.uk
-            let mut request = gen_request("/country_code").await;
-            request.set_peer_addr(Some(format!("{}:{}", PEER_ADDR_GOOGLE_CO_UK, PEER_PORT)));
+                let body = hyper::body::to_bytes(response.into_body())
+                    .await
+                    .expect("body received");
 
-            let mut response: http::Response = app.respond(request).await.expect("request handled");
-            assert_eq!(response.status(), StatusCode::Ok);
+                assert_eq!(&body, "US");
+            }
+            {
+                // With IP of Google.co.uk
+                let mut request = gen_request("/country_code").await;
+                let _header = request.headers_mut().insert(
+                    "x-real-ip",
+                    HeaderValue::from_str(PEER_ADDR_ELYSEE_FR).expect("google.co.uk adddress"),
+                );
 
-            let body = response.body_string().await.expect("body received");
+                let response = app.call(request).await.expect("request handled");
+                assert_eq!(response.status(), StatusCode::OK);
 
-            assert_eq!(&body, "GB");
-        }
-        {
-            // With no country IP (localhost)
-            let mut request = gen_request("/country_code").await;
-            request.set_peer_addr(Some(format!("127.0.0.1:{}", PEER_PORT)));
+                let body = hyper::body::to_bytes(response.into_body())
+                    .await
+                    .expect("body received");
 
-            let mut response: http::Response = app.respond(request).await.expect("request handled");
-            assert_eq!(response.status(), StatusCode::Ok);
+                assert_eq!(&body, "FR");
+            }
+            {
+                // With no country IP (localhost)
+                let mut request = gen_request("/country_code").await;
+                let _header = request
+                    .headers_mut()
+                    .insert("x-real-ip", HeaderValue::from_static("127.0.0.1"));
 
-            let body = response.body_string().await.expect("body received");
+                let response = app.call(request).await.expect("request handled");
+                assert_eq!(response.status(), StatusCode::OK);
 
-            assert_eq!(&body, "");
-        }
-    });
+                let body = hyper::body::to_bytes(response.into_body())
+                    .await
+                    .expect("body received");
+
+                assert_eq!(&body, "");
+            }
+        });
 }
 
 #[test]
 fn test_ip() {
-    async_std::task::block_on(async {
-        {
-            // With standard process + example.org
-            let mut response = get_response(None, "/ip").await;
-            assert_eq!(response.status(), StatusCode::Ok);
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(async {
+            let mut app = gen_test_app(None);
+            {
+                // With standard process + example.org
+                let request = gen_request("/ip").await;
+                let response = app.call(request).await.expect("request handled");
 
-            let body = response.body_string().await.expect("body received");
+                assert_eq!(response.status(), StatusCode::OK);
 
-            assert_eq!(&body, PEER_ADDR);
-        }
-        let app = gen_test_app(None).await;
-        {
-            // With IP of Google.co.uk
-            let mut request = gen_request("/ip").await;
-            request.set_peer_addr(Some(format!("{}:{}", PEER_ADDR_GOOGLE_CO_UK, PEER_PORT)));
+                let body = hyper::body::to_bytes(response.into_body())
+                    .await
+                    .expect("body received");
 
-            let mut response: http::Response = app.respond(request).await.expect("request handled");
-            assert_eq!(response.status(), StatusCode::Ok);
+                assert_eq!(&body, PEER_ADDR);
+            }
+            {
+                // With IP of Google.co.uk
+                let mut request = gen_request("/ip").await;
+                let _header = request
+                    .headers_mut()
+                    .insert("x-real-ip", HeaderValue::from_static(PEER_ADDR_ELYSEE_FR));
+                let response = app.call(request).await.expect("request handled");
 
-            let body = response.body_string().await.expect("body received");
+                assert_eq!(response.status(), StatusCode::OK);
 
-            assert_eq!(&body, PEER_ADDR_GOOGLE_CO_UK);
-        }
-        {
-            // With no country IP (localhost)
-            let mut request = gen_request("/ip").await;
-            request.set_peer_addr(Some(format!("127.0.0.1:{}", PEER_PORT)));
+                let body = hyper::body::to_bytes(response.into_body())
+                    .await
+                    .expect("body received");
 
-            let mut response: http::Response = app.respond(request).await.expect("request handled");
-            assert_eq!(response.status(), StatusCode::Ok);
+                assert_eq!(&body, PEER_ADDR_ELYSEE_FR);
+            }
+            {
+                // With no country IP (localhost)
+                let mut request = gen_request("/ip").await;
+                let _header = request
+                    .headers_mut()
+                    .insert("x-real-ip", HeaderValue::from_static("127.0.0.1"));
 
-            let body = response.body_string().await.expect("body received");
+                let response = app.call(request).await.expect("request handled");
+                assert_eq!(response.status(), StatusCode::OK);
 
-            assert_eq!(&body, "127.0.0.1");
-        }
-        {
-            // From Forwarded header, GB instead of US
-            let mut request = gen_request("/ip").await;
-            request.set_peer_addr(Some(format!("{}:{}", PEER_ADDR, PEER_PORT)));
-            let _none_value = request.insert_header("X-Real-Ip", PEER_ADDR_GOOGLE_CO_UK);
+                let body = hyper::body::to_bytes(response.into_body())
+                    .await
+                    .expect("body received");
 
-            let mut response: http::Response = app.respond(request).await.expect("request handled");
-            assert_eq!(response.status(), StatusCode::Ok);
+                assert_eq!(&body, "127.0.0.1");
+            }
+            // {
+            //     // From Forwarded header, GB instead of US
+            //     let mut request = gen_request("/ip").await;
+            //     let _header = request
+            //         .headers_mut()
+            //         .insert("x-real-ip",
+            // HeaderValue::from_static("127.0.0.1"));     request.
+            // set_peer_addr(Some(format!("{}:{}", PEER_ADDR, PEER_PORT)));
+            //     let _none_value = request.insert_header("X-Real-Ip",
+            // PEER_ADDR_GOOGLE_CO_UK);
 
-            let body = response.body_string().await.expect("body received");
+            //     let mut response: http::Response =
+            //         app.respond(request).await.expect("request handled");
+            //     assert_eq!(response.status(), StatusCode::OK);
 
-            assert_eq!(&body, PEER_ADDR_GOOGLE_CO_UK);
-        }
-    });
+            //     let body = response.body_string().await.expect("body
+            // received");
+
+            //     assert_eq!(&body, PEER_ADDR_GOOGLE_CO_UK);
+            // }
+        });
 }
 
 #[test]
 fn test_host() {
-    async_std::task::block_on(async {
-        let app = gen_test_app(None).await;
-        {
-            // With Google.co.uk
-            let mut request = gen_request("/host").await;
-            request.set_peer_addr(Some(format!("1.1.1.1:{}", PEER_PORT)));
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(async {
+            let mut app = gen_test_app(None);
+            {
+                // With Google.co.uk
+                let mut request = gen_request("/host").await;
+                let _header = request
+                    .headers_mut()
+                    .insert("x-real-ip", HeaderValue::from_static("1.1.1.1"));
 
-            let mut response: http::Response = app.respond(request).await.expect("request handled");
-            assert_eq!(response.status(), StatusCode::Ok);
+                let response = app.call(request).await.expect("request handled");
+                assert_eq!(response.status(), StatusCode::OK);
 
-            let body = response.body_string().await.expect("body received");
+                let body = hyper::body::to_bytes(response.into_body())
+                    .await
+                    .expect("body received");
 
-            assert_eq!(&body, "one.one.one.one");
-        }
-        {
-            // With no country IP (localhost)
-            let mut request = gen_request("/host").await;
-            request.set_peer_addr(Some(format!("127.0.0.1:{}", PEER_PORT)));
+                assert_eq!(&body, "one.one.one.one");
+            }
+            {
+                // With no country IP (localhost)
+                let mut request = gen_request("/host").await;
+                let _header = request
+                    .headers_mut()
+                    .insert("x-real-ip", HeaderValue::from_static("127.0.0.1"));
 
-            let mut response: http::Response = app.respond(request).await.expect("request handled");
-            assert_eq!(response.status(), StatusCode::Ok);
+                let response = app.call(request).await.expect("request handled");
+                assert_eq!(response.status(), StatusCode::OK);
 
-            let body = response.body_string().await.expect("body received");
+                let body = hyper::body::to_bytes(response.into_body())
+                    .await
+                    .expect("body received");
 
-            assert_eq!(&body, "localhost");
-        }
-    });
+                assert_eq!(&body, "localhost");
+            }
+        });
 }
 
 #[test]
 fn test_all_yaml() {
-    async_std::task::block_on(async {
-        let mut response = get_response(None, "/all").await;
-        assert_eq!(response.status(), StatusCode::Ok);
-        assert_eq!(
-            response.header("X-IP-Geolocation-By").map(|v| v.as_str()),
-            Some("https://db-ip.com/")
-        );
-        assert_eq!(
-            response.header("X-IP-Geolocation-Date").map(|v| v.as_str()),
-            Some(MMDB_DATE)
-        );
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(async {
+            let mut app = gen_test_app(None);
+            let request = gen_request("/all").await;
 
-        let body = response.body_string().await.expect("body received");
+            let response = app.call(request).await.expect("request handled");
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response
+                    .headers()
+                    .get("X-IP-Geolocation-By")
+                    .map(|v| v.to_str().expect("header value")),
+                Some("https://db-ip.com/")
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get("X-IP-Geolocation-Date")
+                    .map(|v| v.to_str().expect("header value")),
+                Some(MMDB_DATE)
+            );
 
-        assert_eq!(
-            &body,
-            r#"---
-ip: 93.184.216.34
+            let body = hyper::body::to_bytes(response.into_body())
+                .await
+                .expect("body received");
+
+            assert_eq!(
+                &body,
+                r#"ip: 93.184.216.34
 host: 93.184.216.34
-ua: "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:98.0) Gecko/20100101 Firefox/98.0"
+ua: 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:98.0) Gecko/20100101 Firefox/98.0'
 lang: fr_FR; en_US
-encoding: "gzip, deflate, br"
+encoding: gzip, deflate, br
 method: GET
-mime: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-referer: ""
+mime: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
 country_code: US
 "#
-        );
-    });
+            );
+        });
 }
 
 #[test]
 fn test_all_json() {
-    async_std::task::block_on(async {
-        let mut response = get_response(None, "/all.json").await;
-        assert_eq!(response.status(), StatusCode::Ok);
-        assert_eq!(
-            response.header("X-IP-Geolocation-By").map(|v| v.as_str()),
-            Some("https://db-ip.com/")
-        );
-        assert_eq!(
-            response.header("X-IP-Geolocation-Date").map(|v| v.as_str()),
-            Some(MMDB_DATE)
-        );
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(async {
+            let mut app = gen_test_app(None);
+            let request = gen_request("/all.json").await;
 
-        let body = response.body_string().await.expect("body received");
+            let response = app.call(request).await.expect("request handled");
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response
+                    .headers()
+                    .get("X-IP-Geolocation-By")
+                    .map(|v| v.to_str().expect("header value")),
+                Some("https://db-ip.com/")
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get("X-IP-Geolocation-Date")
+                    .map(|v| v.to_str().expect("header value")),
+                Some(MMDB_DATE)
+            );
+
+            let body = hyper::body::to_bytes(response.into_body())
+                .await
+                .expect("body received");
 
         assert_eq!(
             &body,
-            r#"{"ip":"93.184.216.34","host":"93.184.216.34","ua":"User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:98.0) Gecko/20100101 Firefox/98.0","lang":"fr_FR; en_US","encoding":"gzip, deflate, br","method":"GET","mime":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8","referer":"","country_code":"US"}"#
+            r#"{"ip":"93.184.216.34","host":"93.184.216.34","ua":"User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:98.0) Gecko/20100101 Firefox/98.0","lang":"fr_FR; en_US","encoding":"gzip, deflate, br","method":"GET","mime":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8","country_code":"US"}"#
         );
     });
 }
 
 #[test]
 fn test_all() {
-    async_std::task::block_on(async {
-        let mut response = get_response(None, "/").await;
-        assert_eq!(response.status(), StatusCode::Ok);
-        assert_eq!(
-            response.header("X-IP-Geolocation-By").map(|v| v.as_str()),
-            Some("https://db-ip.com/")
-        );
-        assert_eq!(
-            response.header("X-IP-Geolocation-Date").map(|v| v.as_str()),
-            Some(MMDB_DATE)
-        );
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(async {
+            let mut app = gen_test_app(None);
+            let request = gen_request("/").await;
 
-        let body = response.body_string().await.expect("body received");
+            let response = app.call(request).await.expect("request handled");
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response
+                    .headers()
+                    .get("X-IP-Geolocation-By")
+                    .map(|v| v.to_str().expect("header value")),
+                Some("https://db-ip.com/")
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get("X-IP-Geolocation-Date")
+                    .map(|v| v.to_str().expect("header value")),
+                Some(MMDB_DATE)
+            );
+
+        let body = hyper::body::to_bytes(response.into_body()).await.expect("body received");
+        let body = String::from_utf8(body.to_vec()).expect("html page");
 
         assert!(body.contains("What is my ip address? - <small>test.localhost</small>\n"));
         // Country
         assert!(body.contains("<div class=\"col-sm-9\">US</div>\n"));
         // IP
-        assert!(body.contains(
-            "<div class=\"col-sm-3\">IP Address</div><div class=\"col-sm-9\">93.184.216.34</div>\n"
-        ));
+        assert!(body.contains("<div class=\"col-sm-3\">IP Address</div><div class=\"col-sm-9\">93.184.216.34</div>\n"));
         // Footer for DB-IP
-        assert!(body.contains(&format!("<p><a href='https://db-ip.com'>IP Geolocation by DB-IP</a> &mdash; <em>(in date of {})</em></p>\n", MMDB_DATE)));
+        assert!(body.contains(&format!("<p><a href='https://db-ip.com'>IP Geolocation by DB-IP</a> &mdash; <em>(in date of {MMDB_DATE})</em></p>\n")));
     });
 }
 
 #[test]
 fn test_all_curl() {
-    async_std::task::block_on(async {
-        let mut request = gen_request("/").await;
-        let _old_value = request.insert_header(headers::USER_AGENT, "curl/7.82.0");
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(async {
+            let mut app = gen_test_app(None);
+            let mut request = gen_request("/").await;
+            let _old_value = request
+                .headers_mut()
+                .insert(header::USER_AGENT, HeaderValue::from_static("curl/7.82.0"));
 
-        let app = gen_test_app(None).await;
-        let mut response: http::Response = app.respond(request).await.expect("request handled");
-        assert_eq!(response.status(), StatusCode::Ok);
-        assert_eq!(
-            response.header("X-IP-Geolocation-By").map(|v| v.as_str()),
-            None
-        );
-        assert_eq!(
-            response.header("X-IP-Geolocation-Date").map(|v| v.as_str()),
-            None
-        );
+            let response = app.call(request).await.expect("request handled");
 
-        let body = response.body_string().await.expect("body received");
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response
+                    .headers()
+                    .get("X-IP-Geolocation-By")
+                    .map(|v| v.to_str().expect("header value")),
+                None
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get("X-IP-Geolocation-Date")
+                    .map(|v| v.to_str().expect("header value")),
+                None
+            );
 
-        assert_eq!(&body, PEER_ADDR);
-    });
+            let body = hyper::body::to_bytes(response.into_body())
+                .await
+                .expect("body received");
+
+            assert_eq!(&body, PEER_ADDR);
+        });
 }
 
 #[test]
 fn test_db_ip() {
-    async_std::task::block_on(async {
-        let (db_ip, db_date) = get_db(Some(
-            Path::new("assets/GeoLite2-Country-Test-2022-02.mmdb")
-                .to_str()
-                .expect("path to database")
-                .to_owned(),
-        ));
-        assert_eq!(db_date, "2022-02");
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(async {
+            let (db_ip, db_date) = get_db(Some(
+                Path::new("assets/GeoLite2-Country-Test-2022-02.mmdb")
+                    .to_str()
+                    .expect("path to database")
+                    .to_owned(),
+            ));
+            assert_eq!(db_date, "2022-02");
 
-        let country = db_ip
-            .lookup(IpAddr::V4(Ipv4Addr::new(50, 114, 0, 1)))
-            .expect("country")
-            .country
-            .expect("country")
-            .iso_code
-            .expect("country code");
-        assert_eq!(country, "US");
-    });
+            let country = db_ip
+                .lookup(IpAddr::V4(Ipv4Addr::new(50, 114, 0, 1)))
+                .expect("country")
+                .country
+                .expect("country")
+                .iso_code
+                .expect("country code");
+            assert_eq!(country, "US");
+        });
 }
