@@ -295,10 +295,15 @@ fn init_app(hostname: String, db_ip: Arc<DbIp>, db_date: String) -> Router<MySta
 }
 
 fn get_db(db_file: Option<String>) -> (DbIp, String) {
-    let reader = db_file.map_or_else(
-        || DbIp::Inline(Reader::from_source(DB_IP).expect("geoip database")),
-        |filename| DbIp::External(Reader::open_readfile(filename).expect("Geo IP filename")),
-    );
+    let reader = db_file
+        .and_then(|filename| match filename.trim() {
+            "" => None,
+            _ => Some(filename),
+        })
+        .map_or_else(
+            || DbIp::Inline(Reader::from_source(DB_IP).expect("geoip database")),
+            |filename| DbIp::External(Reader::open_readfile(filename).expect("Geo IP filename")),
+        );
 
     let date: DateTime<Utc> = DateTime::from_utc(
         NaiveDateTime::from_timestamp(
