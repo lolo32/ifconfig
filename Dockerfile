@@ -1,5 +1,7 @@
+# FROM registry.baysse.eu/lolo32/rust-registry AS cache
 # select build image
 FROM rust:alpine as build
+# COPY --from=cache / /
 
 # install gcc related stuff
 RUN apk add --no-cache build-base protoc
