@@ -306,14 +306,15 @@ fn get_db(db_file: Option<String>) -> (DbIp, String) {
         );
 
     let date: DateTime<Utc> = DateTime::from_utc(
-        NaiveDateTime::from_timestamp(
+        NaiveDateTime::from_timestamp_opt(
             reader
                 .metadata()
                 .build_epoch
                 .try_into()
                 .expect("db_ip epoch too big"),
             0,
-        ),
+        )
+        .expect("dbip metadata build date"),
         Utc,
     );
 
