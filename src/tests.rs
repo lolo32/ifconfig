@@ -1,7 +1,7 @@
 use std::{net::Ipv4Addr, path::Path};
 
-use axum::{http, RouterService};
-use hyper::Body;
+use axum::http;
+use http_body_util::Empty;
 use pretty_assertions::assert_eq;
 use tower::Service;
 
@@ -16,17 +16,16 @@ const PEER_ADDR: &str = "93.184.216.34";
 const PEER_ADDR_ELYSEE_FR: &str = "185.194.81.29";
 const MMDB_DATE: &str = "2022-11";
 
-fn gen_test_app(hostname: Option<&str>) -> RouterService {
+fn gen_test_app(hostname: Option<&str>) -> Router {
     let (db_ip, db_date) = get_db(None);
     init_app(
         hostname.unwrap_or("test.localhost").to_owned(),
         Arc::new(db_ip),
         db_date,
     )
-    .into_service()
 }
 
-async fn gen_request(dest: &str) -> http::Request<Body> {
+async fn gen_request(dest: &str) -> http::Request {
     http::Request::builder()
         .method(Method::GET)
         .uri(format!("http://test.localhost{dest}"))
@@ -36,7 +35,7 @@ async fn gen_request(dest: &str) -> http::Request<Body> {
         .header(header::ACCEPT_ENCODING, ENCODING_VALUE)
         .header(header::USER_AGENT, UA_VALUE)
         .header("x-real-ip", PEER_ADDR)
-        .body(Body::empty())
+        .body(Empty::new())
         .expect("request")
     // request.set_peer_addr(Some(format!("{}:{}", PEER_ADDR, PEER_PORT)));
 }
