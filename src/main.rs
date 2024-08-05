@@ -72,13 +72,14 @@ use async_trait::async_trait;
 use axum::{
     error_handling::HandleErrorLayer,
     extract::{ConnectInfo, FromRequestParts, State},
-    headers::UserAgent,
     http::{request::Parts, HeaderMap, HeaderValue, Method},
     response::{Html, IntoResponse, Response},
     routing::{any, get},
-    Router, TypedHeader,
+    Router,
 };
-use chrono::{DateTime, NaiveDateTime, Utc};
+use axum_extra::TypedHeader;
+use chrono::DateTime;
+use headers::UserAgent;
 use hyper::{
     header::{self, AsHeaderName},
     StatusCode,
@@ -88,15 +89,12 @@ use sailfish::TemplateOnce;
 use serde::{Deserialize, Serialize};
 use tower::{BoxError, ServiceBuilder};
 use tower_http::{
-    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
-    LatencyUnit, ServiceBuilderExt,
+    set_header::SetResponseHeaderLayer,
+    trace::{DefaultMakeSpan, TraceLayer},
 };
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
-use trust_dns_resolver::{
-    name_server::{GenericConnection, GenericConnectionProvider, TokioRuntime},
-    AsyncResolver,
-};
+use trust_dns_resolver::{AsyncResolver, TokioAsyncResolver};
 use utoipa::OpenApi;
 
 #[cfg(test)]
@@ -127,7 +125,7 @@ impl DbIp {
 
 #[derive(Clone)]
 struct MyState {
-    resolver: AsyncResolver<GenericConnection, GenericConnectionProvider<TokioRuntime>>,
+    resolver: TokioAsyncResolver,
     hostname: String,
     db_ip: Arc<DbIp>,
     db_date: &'static str,
@@ -158,35 +156,8 @@ struct IndexTemplate<'a> {
 
 const UNKNOWN: &str = "unknown";
 
-// #[derive(Debug, Copy, Clone)]
-// pub struct MyLogger;
-
-// #[tide::utils::async_trait]
-// impl<State> Middleware<State> for MyLogger
-// where
-//     State: Clone + Send + Sync + 'static,
-// {
-//     async fn handle(&self, request: Request<State>, next: Next<'_, State>) ->
-// tide::Result {         Ok(match (request.method(), request.url().path()) {
-//             (Method::Get, "/health") => next.run(request).await,
-//             (method, path) => {
-//                 let now = Instant::now();
-//                 let path = path.to_owned();
-//                 let method = method.to_string();
-//                 let response = next.run(request).await;
-//                 let status = response.status();
-//                 let duration = now.elapsed();
-//                 tracing::info!(
-//                     method = method.as_str(),
-//                     path = path.as_str(),
-//                     status = status.to_string().as_str(),
-//                     duration = format!("{:?}", duration).as_str(),
-//                 );
-//                 response
-//             }
-//         })
-//     }
-// }
+#[derive(Clone, Copy, Debug)]
+pub struct DoNotMonitor;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RemoteIp(String);
@@ -198,17 +169,13 @@ where
 {
     type Rejection = Infallible;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let sock = ConnectInfo::<SocketAddr>::from_request_parts(parts, state)
+            .await
+            .expect("remote socket");
+
         let ip = parts.headers.get("x-real-ip").map_or_else(
-            || {
-                parts
-                    .extensions
-                    .get::<ConnectInfo<SocketAddr>>()
-                    .expect("remote socket")
-                    .0
-                    .ip()
-                    .to_string()
-            },
+            || sock.0.ip().to_string(),
             |ip| ip.to_str().expect("x-real-ip header value").to_owned(),
         );
         Ok(Self(ip))
@@ -241,7 +208,7 @@ async fn swagger() -> String {
     ApiDoc::openapi().to_json().expect("JSON swagger")
 }
 
-fn init_app(hostname: String, db_ip: Arc<DbIp>, db_date: String) -> Router<MyState> {
+fn init_app(hostname: String, db_ip: Arc<DbIp>, db_date: String) -> Router {
     let resolver = AsyncResolver::tokio_from_system_conf().expect("resolver initialized");
 
     let state = MyState {
@@ -262,10 +229,18 @@ fn init_app(hostname: String, db_ip: Arc<DbIp>, db_date: String) -> Router<MySta
                         .level(Level::INFO),
                 )
                 .on_response(
-                    DefaultOnResponse::new()
-                        .include_headers(false)
-                        .latency_unit(LatencyUnit::Micros)
-                        .level(Level::INFO),
+                    move |response: &Response, latency: Duration, _span: &tracing::Span| {
+                        if response.extensions().get::<DoNotMonitor>().is_some() {
+                            return;
+                        }
+                        let latency = format!("{:?} μs", latency.as_micros());
+                        tracing::event!(
+                            Level::INFO,
+                            %latency,
+                            status = %response.status(),
+                            "response"
+                        );
+                    },
                 ),
         )
         // Handle errors
@@ -273,12 +248,24 @@ fn init_app(hostname: String, db_ip: Arc<DbIp>, db_date: String) -> Router<MySta
         // Set a timeout
         .timeout(Duration::from_secs(10))
         // Set the cache headers to always revalidate data
-        .override_response_header(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))
-        .override_response_header(header::PRAGMA, HeaderValue::from_static("no-cache"))
-        .override_response_header(header::EXPIRES, HeaderValue::from_static("-1"))
-        .override_response_header(header::CONNECTION, HeaderValue::from_static("Close"));
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::PRAGMA,
+            HeaderValue::from_static("no-cache"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::EXPIRES,
+            HeaderValue::from_static("-1"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CONNECTION,
+            HeaderValue::from_static("Close"),
+        ));
 
-    Router::with_state(state)
+    Router::new()
         .route("/", any(index))
         .route("/ip", any(ip))
         .route("/host", any(host))
@@ -292,6 +279,7 @@ fn init_app(hostname: String, db_ip: Arc<DbIp>, db_date: String) -> Router<MySta
         .route("/health", get(health))
         .route("/api", get(swagger))
         .layer(middleware.into_inner())
+        .with_state(state)
 }
 
 fn get_db(db_file: Option<String>) -> (DbIp, String) {
@@ -300,33 +288,42 @@ fn get_db(db_file: Option<String>) -> (DbIp, String) {
             "" => None,
             _ => Some(filename),
         })
+        .inspect(|v| tracing::event!(Level::INFO, "Using external Geo IP database: {v}"))
         .map_or_else(
             || DbIp::Inline(Reader::from_source(DB_IP).expect("geoip database")),
             |filename| DbIp::External(Reader::open_readfile(filename).expect("Geo IP filename")),
         );
 
-    let date: DateTime<Utc> = DateTime::from_utc(
-        NaiveDateTime::from_timestamp(
-            reader
-                .metadata()
-                .build_epoch
-                .try_into()
-                .expect("db_ip epoch too big"),
-            0,
-        ),
-        Utc,
-    );
+    let date = DateTime::from_timestamp(
+        reader
+            .metadata()
+            .build_epoch
+            .try_into()
+            .expect("db_ip epoch too big"),
+        0,
+    )
+    .expect("geoip database timestamp");
 
     (reader, date.format("%Y-%m").to_string())
 }
 
-fn main() -> Result<(), hyper::Error> {
+fn main() -> Result<(), std::io::Error> {
     let _env = dotenv::dotenv();
+
+    let directives = env::var(EnvFilter::DEFAULT_ENV).unwrap_or_else(|_err| String::new());
+    let crate_name = module_path!()
+        .split(':')
+        .next()
+        .expect("Could not find crate name in module path")
+        .to_string();
+    let env_filter_directives =
+        format!("warn,tower_http=info,tower=trace,{crate_name}=info,{directives}");
+    let env_filter = EnvFilter::builder().parse_lossy(env_filter_directives);
 
     tracing_subscriber::fmt()
         // .json()
-        .compact()
-        .with_env_filter(EnvFilter::from_default_env())
+        // .compact()
+        .with_env_filter(env_filter)
         .with_target(true)
         .with_line_number(false)
         .with_file(false)
@@ -345,16 +342,16 @@ fn main() -> Result<(), hyper::Error> {
         .block_on(async {
             let app = init_app(hostname, Arc::new(db_ip), db_date);
 
-            axum::Server::bind(&listen.parse().expect("LISTEN_ADDR is not valid"))
-                .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-                .await
+            let listener = tokio::net::TcpListener::bind(listen).await.unwrap();
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await
         })
 }
 
-async fn resolve(
-    resolver: &AsyncResolver<GenericConnection, GenericConnectionProvider<TokioRuntime>>,
-    addr: &RemoteIp,
-) -> Option<String> {
+async fn resolve(resolver: &TokioAsyncResolver, addr: &RemoteIp) -> Option<String> {
     let addr = &addr.0;
     if addr == UNKNOWN {
         None
@@ -636,6 +633,8 @@ async fn all_json(
 }
 
 #[inline]
-async fn health(State(state): State<MyState>) -> String {
-    format!("UP\nDB-IP: {}", state.db_date)
+async fn health(State(state): State<MyState>) -> Response {
+    let mut res = format!("UP\nDB-IP: {}", state.db_date).into_response();
+    let _ = res.extensions_mut().insert(DoNotMonitor);
+    res
 }

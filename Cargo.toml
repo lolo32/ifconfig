@@ -6,80 +6,31 @@ description = "Returns internet connection information related to the client"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies.async-trait]
-version = "0.1"
+[dependencies]
+async-trait = "0.1"
+axum = "0.7"
+axum-extra = { version = "0.9", features = ["typed-header"] }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+dotenv = "0.15"
+headers = "0.4"
+hyper = "1"
+maxminddb = "0.24"
+sailfish = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "tracing"] }
+tower = { version = "0.4", features = ["tracing", "timeout"] }
+tower-http = { version = "0.5", features = ["trace", "set-header"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+trust-dns-resolver = "0.23"
+utoipa = { version = "4", features = ["axum_extras"] }
 
-[dependencies.axum]
-version = "0.6.0-rc.4"
-features = ["headers"]
-
-[dependencies.chrono]
-version = "0.4"
-default-features = false
-features = [
-    "std"
-]
-
-[dependencies.dotenv]
-version = "0.15"
-
-[dependencies.hyper]
-version = "0.14"
-
-[dependencies.maxminddb]
-version = "0.23"
-
-[dependencies.sailfish]
-version = "0.5"
-
-[dependencies.serde]
-version = "1"
-features = [
-    "derive"
-]
-
-[dependencies.serde_yaml]
-version = "0.9"
-
-[dependencies.serde_json]
-version = "1"
-
-[dependencies.tokio]
-version = "1"
-features = ["rt-multi-thread", "net", "tracing"]
-
-[dependencies.tower]
-version = "0.4"
-features = ["tracing", "timeout"]
-
-[dependencies.tower-http]
-version = "0.3"
-features = ["trace", "set-header"]
-
-[dependencies.tracing]
-version = "0.1"
-
-[dependencies.tracing-subscriber]
-version = "0.3"
-features = [
-    "env-filter"
-]
-
-[dependencies.trust-dns-resolver]
-version = "0.22"
-
-[dependencies.utoipa]
-version = "2"
-features = [
-    "axum_extras"
-]
-
-[dev-dependencies.pretty_assertions]
-version = "1"
-
-[dev-dependencies.tower]
-version = "0.4"
-features = ["util"]
+[dev-dependencies]
+http-body-util = "0.1"
+pretty_assertions = "1"
+tower = { version = "0.4", features = ["util"] }
 
 [profile.release]
 opt-level = 3
@@ -87,3 +38,4 @@ debug = false
 codegen-units = 1
 lto = "fat"
 incremental = false
+strip = true
